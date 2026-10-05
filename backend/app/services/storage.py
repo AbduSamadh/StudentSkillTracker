@@ -14,8 +14,11 @@ def _s3():  # noqa: ANN202
 
     s = get_settings()
     return boto3.client(
-        "s3", endpoint_url=s.s3_endpoint_url, region_name=s.s3_region,
-        aws_access_key_id=s.s3_access_key, aws_secret_access_key=s.s3_secret_key,
+        "s3",
+        endpoint_url=s.s3_endpoint_url,
+        region_name=s.s3_region,
+        aws_access_key_id=s.s3_access_key,
+        aws_secret_access_key=s.s3_secret_key,
     )
 
 
@@ -31,7 +34,11 @@ async def put(key: str, data: bytes, content_type: str) -> None:
     s = get_settings()
     if s.storage_backend == "s3":
         await asyncio.to_thread(
-            _s3().put_object, Bucket=s.s3_bucket, Key=key, Body=data, ContentType=content_type,
+            _s3().put_object,
+            Bucket=s.s3_bucket,
+            Key=key,
+            Body=data,
+            ContentType=content_type,
             ServerSideEncryption="AES256",
         )
         return
@@ -64,6 +71,7 @@ async def healthy() -> bool:
         if s.storage_backend == "s3":
             await asyncio.to_thread(_s3().head_bucket, Bucket=s.s3_bucket)
         else:
+
             def _probe() -> None:
                 p = Path(s.storage_local_path)
                 p.mkdir(parents=True, exist_ok=True)
@@ -82,10 +90,16 @@ def signed_url(tenant_id: uuid.UUID, key: str, filename: str, content_type: str)
     if s.storage_backend == "s3":
         return _s3().generate_presigned_url(
             "get_object",
-            Params={"Bucket": s.s3_bucket, "Key": key, "ResponseContentDisposition": f'attachment; filename="{filename}"'},
+            Params={
+                "Bucket": s.s3_bucket,
+                "Key": key,
+                "ResponseContentDisposition": f'attachment; filename="{filename}"',
+            },
             ExpiresIn=s.signed_url_seconds,
         )
     token = create_scoped_token(
-        "file", {"tid": str(tenant_id), "key": key, "fn": filename, "ct": content_type}, max(1, s.signed_url_seconds // 60)
+        "file",
+        {"tid": str(tenant_id), "key": key, "fn": filename, "ct": content_type},
+        max(1, s.signed_url_seconds // 60),
     )
     return f"{s.api_base_url}/api/v1/files/{token}"

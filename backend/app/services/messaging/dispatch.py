@@ -19,12 +19,19 @@ from app.tenancy import load_settings
 log = logging.getLogger(__name__)
 RETRYABLE = (DeliveryStatus.PENDING, DeliveryStatus.HELD_QUIET_HOURS, DeliveryStatus.THROTTLED)
 TERMINAL = (
-    DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ, DeliveryStatus.FAILED,
-    DeliveryStatus.BLOCKED_CONSENT, DeliveryStatus.BLOCKED_OPT_OUT, DeliveryStatus.CANCELLED,
+    DeliveryStatus.SENT,
+    DeliveryStatus.DELIVERED,
+    DeliveryStatus.READ,
+    DeliveryStatus.FAILED,
+    DeliveryStatus.BLOCKED_CONSENT,
+    DeliveryStatus.BLOCKED_OPT_OUT,
+    DeliveryStatus.CANCELLED,
 )
 
 
-async def _send_one(session: AsyncSession, tenant: Tenant, message: Message, d: MessageDelivery, now: datetime) -> None:
+async def _send_one(
+    session: AsyncSession, tenant: Tenant, message: Message, d: MessageDelivery, now: datetime
+) -> None:
     template = await template_for(session, message)
     guardian = await session.get(Guardian, d.guardian_id)
     assert guardian is not None
@@ -34,19 +41,35 @@ async def _send_one(session: AsyncSession, tenant: Tenant, message: Message, d: 
         attempted.append(channel.value)
         meta = {"tenant_id": str(tenant.id), "message_id": str(message.id), "delivery_id": str(d.id)}
         if channel == Channel.IN_APP:
-            res = await ch.send_in_app(session, guardian.id, d.rendered_subject or "", d.rendered_body or "", d.id)
+            res = await ch.send_in_app(
+                session, guardian.id, d.rendered_subject or "", d.rendered_body or "", d.id
+            )
         elif channel == Channel.EMAIL:
-            res = await ch.send_email(session, address_for(guardian, channel) or "", d.rendered_subject or "",
-                                      d.rendered_body or "", meta=meta)
+            res = await ch.send_email(
+                session,
+                address_for(guardian, channel) or "",
+                d.rendered_subject or "",
+                d.rendered_body or "",
+                meta=meta,
+            )
         elif channel == Channel.SMS:
-            res = await ch.send_sms(session, address_for(guardian, channel) or "", d.rendered_body or "", meta=meta)
+            res = await ch.send_sms(
+                session, address_for(guardian, channel) or "", d.rendered_body or "", meta=meta
+            )
         else:
-            students = list((await session.scalars(select(Student).where(Student.id.in_(d.student_ids)))).all())
+            students = list(
+                (await session.scalars(select(Student).where(Student.id.in_(d.student_ids)))).all()
+            )
             ctx = await build_context(session, tenant, message, Family(guardian, students), d.language)
             params = [str(ctx.get(v, "")) for v in template.variables]
             res = await ch.send_whatsapp_template(
-                session, address_for(guardian, channel) or "", template_name=template.whatsapp_template_name,
-                language=d.language.value, parameters=params, preview_body=d.rendered_body or "", meta=meta,
+                session,
+                address_for(guardian, channel) or "",
+                template_name=template.whatsapp_template_name,
+                language=d.language.value,
+                parameters=params,
+                preview_body=d.rendered_body or "",
+                meta=meta,
             )
         if res.ok:
             d.status, d.channel_used, d.sent_at = DeliveryStatus.SENT, channel, now
@@ -85,9 +108,9 @@ async def dispatch_message(session: AsyncSession, tenant: Tenant, message: Messa
             d.status, d.error, d.hold_until = verdict.status, verdict.reason, verdict.hold_until
         counts[d.status.value] = counts.get(d.status.value, 0) + 1
     remaining = await session.scalar(
-        select(MessageDelivery.id).where(
-            MessageDelivery.message_id == message.id, MessageDelivery.status.not_in(TERMINAL)
-        ).limit(1)
+        select(MessageDelivery.id)
+        .where(MessageDelivery.message_id == message.id, MessageDelivery.status.not_in(TERMINAL))
+        .limit(1)
     )
     if remaining is None:
         message.status = MessageStatus.COMPLETED

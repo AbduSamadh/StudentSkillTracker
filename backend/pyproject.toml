@@ -67,3 +67,16 @@ ignore = ["S101", "B008", "S311", "E501", "UP046"]
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S105", "S106"]
 "app/seed/*" = ["S105", "S106"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]
+known-third-party = ["alembic"]
+
+[tool.mypy]
+python_version = "3.12"
+plugins = ["pydantic.mypy"]
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["openpyxl.*", "weasyprint.*", "boto3.*", "botocore.*"]
+ignore_missing_imports = true

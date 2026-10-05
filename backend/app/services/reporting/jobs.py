@@ -39,8 +39,13 @@ async def generate_report_job(tenant_id: str, job_id: str, **_: object) -> None:
             # Jobs run with the requesting user's scope — a report cannot see more than its author.
             principal = await load_principal(session, user.id, tid, mfa=True)
             settings = load_settings(tenant.settings)
-            rc = ReportCtx(session=session, settings=settings, principal=principal, tenant_name=tenant.name,
-                           today=datetime.now(UTC).date())
+            rc = ReportCtx(
+                session=session,
+                settings=settings,
+                principal=principal,
+                tenant_name=tenant.name,
+                today=datetime.now(UTC).date(),
+            )
             body = await build(rc, job.report_type, job.params)
             kw = {"school": tenant.name, "user_name": user.display_name}
             if job.format == ExportFormat.PDF:

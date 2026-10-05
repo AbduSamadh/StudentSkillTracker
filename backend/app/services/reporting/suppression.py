@@ -45,20 +45,34 @@ class Figure:
     ) -> "Figure":
         """``apply_base_rule`` is False only when the denominator is not people (e.g. the
         number of skills in the taxonomy), where disclosure rules do not apply."""
-        min_base = max(settings.min_base_for_percent if settings else MIN_BASE_FOR_PERCENT, MIN_BASE_FOR_PERCENT)
+        min_base = max(
+            settings.min_base_for_percent if settings else MIN_BASE_FOR_PERCENT, MIN_BASE_FOR_PERCENT
+        )
         min_cell = max(settings.min_base_for_cell if settings else MIN_BASE_FOR_CELL, MIN_BASE_FOR_CELL)
-        f = cls(label=label, kind="percent", value=None, numerator=numerator, denominator=denominator,
-                denominator_label=denominator_label, claim_type=claim_type, unit="%")
+        f = cls(
+            label=label,
+            kind="percent",
+            value=None,
+            numerator=numerator,
+            denominator=denominator,
+            denominator_label=denominator_label,
+            claim_type=claim_type,
+            unit="%",
+        )
         if denominator <= 0:
             return f._withhold("there is no base to calculate from")
         if apply_base_rule and denominator < min_base:
-            return f._withhold(f"the base of {denominator} {denominator_label} is below the minimum of {min_base} "
-                               "for publishing a percentage")
+            return f._withhold(
+                f"the base of {denominator} {denominator_label} is below the minimum of {min_base} "
+                "for publishing a percentage"
+            )
         if apply_base_rule and 0 < numerator < min_cell:
             return f._withhold(f"fewer than {min_cell} {denominator_label} are in this group")
         if apply_base_rule and 0 < denominator - numerator < min_cell:
             return f._withhold(f"fewer than {min_cell} {denominator_label} are outside this group")
-        f.value = int((Decimal(numerator) * 100 / Decimal(denominator)).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
+        f.value = int(
+            (Decimal(numerator) * 100 / Decimal(denominator)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+        )
         return f
 
     @classmethod
@@ -77,28 +91,62 @@ class Figure:
         individuals behind the count (a coach's own squad list), so a small count discloses
         nothing new. Percentages keep the base-of-20 rule everywhere."""
         min_cell = max(settings.min_base_for_cell if settings else MIN_BASE_FOR_CELL, MIN_BASE_FOR_CELL)
-        f = cls(label=label, kind="count", value=n, numerator=n, denominator=denominator,
-                denominator_label=denominator_label, claim_type=claim_type)
+        f = cls(
+            label=label,
+            kind="count",
+            value=n,
+            numerator=n,
+            denominator=denominator,
+            denominator_label=denominator_label,
+            claim_type=claim_type,
+        )
         if apply_cell_rule and 0 < n < min_cell:
             f.value = None
             return f._withhold(f"fewer than {min_cell} students — the cell could identify individuals")
         return f
 
     @classmethod
-    def money(cls, amount: Decimal | float | None, *, label: str, currency: str = "AED",
-              denominator: Decimal | float | None = None, denominator_label: str | None = None) -> "Figure":
-        return cls(label=label, kind="money", value=None if amount is None else float(amount),
-                   numerator=None if amount is None else float(amount),
-                   denominator=None if denominator is None else float(denominator),
-                   denominator_label=denominator_label, unit=currency)
+    def money(
+        cls,
+        amount: Decimal | float | None,
+        *,
+        label: str,
+        currency: str = "AED",
+        denominator: Decimal | float | None = None,
+        denominator_label: str | None = None,
+    ) -> "Figure":
+        return cls(
+            label=label,
+            kind="money",
+            value=None if amount is None else float(amount),
+            numerator=None if amount is None else float(amount),
+            denominator=None if denominator is None else float(denominator),
+            denominator_label=denominator_label,
+            unit=currency,
+        )
 
     @classmethod
-    def number(cls, value: float | None, *, label: str, denominator: int | None, denominator_label: str,
-               settings: TenantSettings | None = None, claim_type: ClaimType = "measured") -> "Figure":
+    def number(
+        cls,
+        value: float | None,
+        *,
+        label: str,
+        denominator: int | None,
+        denominator_label: str,
+        settings: TenantSettings | None = None,
+        claim_type: ClaimType = "measured",
+    ) -> "Figure":
         """A statistic over a group of students (e.g. mean index); withheld on a small base."""
         min_cell = max(settings.min_base_for_cell if settings else MIN_BASE_FOR_CELL, MIN_BASE_FOR_CELL)
-        f = cls(label=label, kind="number", value=value, numerator=value, denominator=denominator,
-                denominator_label=denominator_label, claim_type=claim_type)
+        f = cls(
+            label=label,
+            kind="number",
+            value=value,
+            numerator=value,
+            denominator=denominator,
+            denominator_label=denominator_label,
+            claim_type=claim_type,
+        )
         if denominator is not None and denominator < min_cell:
             f.value = None
             return f._withhold(f"based on fewer than {min_cell} {denominator_label}")
@@ -161,4 +209,9 @@ class ReportBody:
         return d
 
     def as_dict(self) -> dict:
-        return {"title": self.title, "subtitle": self.subtitle, "sections": self.sections, "withheld": self.withheld}
+        return {
+            "title": self.title,
+            "subtitle": self.subtitle,
+            "sections": self.sections,
+            "withheld": self.withheld,
+        }

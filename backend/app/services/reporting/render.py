@@ -110,8 +110,16 @@ def to_xlsx(r: ReportBody, *, school: str, user_name: str) -> bytes:
         if s["kind"] == "figures":
             ws.append([s["heading"], "", "claim: " + (s.get("claim_type") or "measured")])
             for f in s["figures"]:
-                ws.append([f["label"], f["display"], f["denominator"], f["denominator_label"],
-                           f["withheld_reason"] or "", f["claim_type"]])
+                ws.append(
+                    [
+                        f["label"],
+                        f["display"],
+                        f["denominator"],
+                        f["denominator_label"],
+                        f["withheld_reason"] or "",
+                        f["claim_type"],
+                    ]
+                )
             ws.append([])
     used: set[str] = {"Summary"}
     for i, s in enumerate(r.sections):
@@ -155,10 +163,29 @@ def to_csv(r: ReportBody, *, school: str, user_name: str) -> bytes:
         w.writerow([])
         w.writerow([s["heading"], s.get("claim_type") or "measured"])
         if s["kind"] == "figures":
-            w.writerow(["label", "value", "numerator", "denominator", "denominator_label", "withheld_reason", "claim_type"])
+            w.writerow(
+                [
+                    "label",
+                    "value",
+                    "numerator",
+                    "denominator",
+                    "denominator_label",
+                    "withheld_reason",
+                    "claim_type",
+                ]
+            )
             for f in s["figures"]:
-                w.writerow([f["label"], f["display"], f["numerator"], f["denominator"], f["denominator_label"],
-                            f["withheld_reason"] or "", f["claim_type"]])
+                w.writerow(
+                    [
+                        f["label"],
+                        f["display"],
+                        f["numerator"],
+                        f["denominator"],
+                        f["denominator_label"],
+                        f["withheld_reason"] or "",
+                        f["claim_type"],
+                    ]
+                )
         elif s["kind"] == "table":
             w.writerow(s["columns"])
             for row in s["rows"]:

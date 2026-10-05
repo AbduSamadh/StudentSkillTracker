@@ -55,9 +55,18 @@ async def send_email(
             async with httpx.AsyncClient(timeout=10) as client:
                 r = await client.post(
                     "https://api.postmarkapp.com/email",
-                    headers={"X-Postmark-Server-Token": settings.postmark_token or "", "Accept": "application/json"},
-                    json={"From": settings.email_from, "To": to, "Subject": subject, "TextBody": body,
-                          "MessageStream": "outbound", "Metadata": {k: str(v) for k, v in meta.items()}},
+                    headers={
+                        "X-Postmark-Server-Token": settings.postmark_token or "",
+                        "Accept": "application/json",
+                    },
+                    json={
+                        "From": settings.email_from,
+                        "To": to,
+                        "Subject": subject,
+                        "TextBody": body,
+                        "MessageStream": "outbound",
+                        "Metadata": {k: str(v) for k, v in meta.items()},
+                    },
                 )
             if r.status_code >= 400:
                 return SendResult(ok=False, error=f"postmark {r.status_code}: {r.text[:200]}")
@@ -113,7 +122,11 @@ async def send_whatsapp_template(
         return SendResult(ok=False, error="no approved WhatsApp template for this message type")
     if settings.whatsapp_provider == "outbox":
         return await _outbox(
-            session, Channel.WHATSAPP, to, template_name, preview_body,
+            session,
+            Channel.WHATSAPP,
+            to,
+            template_name,
+            preview_body,
             {**(meta or {}), "template": template_name, "language": language, "parameters": parameters},
         )
     payload = {

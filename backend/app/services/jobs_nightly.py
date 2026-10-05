@@ -31,17 +31,30 @@ async def refresh_flags_job(tenant_id: str, **_: object) -> int:
         tenant = await session.get(Tenant, tid)
         assert tenant is not None
         settings = load_settings(tenant.settings)
-        students = list((await session.scalars(select(Student).where(
-            Student.enrolment_status == EnrolmentStatus.ACTIVE))).all())
+        students = list(
+            (
+                await session.scalars(
+                    select(Student).where(Student.enrolment_status == EnrolmentStatus.ACTIVE)
+                )
+            ).all()
+        )
         raised = await sync_flags(session, settings, students, datetime.now(UTC).date())
         for f in raised:
-            await emit(session, WebhookEvent.STUDENT_FLAGGED, {"student_id": f.student_id, "kind": f.kind.value,
-                                                                "rule": f.rule})
+            await emit(
+                session,
+                WebhookEvent.STUDENT_FLAGGED,
+                {"student_id": f.student_id, "kind": f.kind.value, "rule": f.rule},
+            )
             if f.kind == FlagKind.ATTENDANCE:
                 # Rule-triggered, but drafted only: a person sends attendance concerns.
                 await draft_attendance_concern(session, f.student_id, None)
-        audit.record(session, actor_user_id=None, actor_roles=["system"], action="flags.nightly",
-                     context={"students": len(students), "raised": len(raised)})
+        audit.record(
+            session,
+            actor_user_id=None,
+            actor_roles=["system"],
+            action="flags.nightly",
+            context={"students": len(students), "raised": len(raised)},
+        )
         await session.commit()
     await deliver_pending(tenant_id)
     return len(raised)
@@ -55,10 +68,17 @@ async def insights_job(tenant_id: str, **_: object) -> int:
         settings = load_settings(tenant.settings)
         today = datetime.now(UTC).date()
         n = 0
-        for s in (await session.scalars(select(Student).where(Student.enrolment_status == EnrolmentStatus.ACTIVE))).all():
+        for s in (
+            await session.scalars(select(Student).where(Student.enrolment_status == EnrolmentStatus.ACTIVE))
+        ).all():
             n += len(await generate_for_student(session, settings, s, today))
-        audit.record(session, actor_user_id=None, actor_roles=["system"], action="insights.generate",
-                     context={"period": half_term(today)[0], "insights": n})
+        audit.record(
+            session,
+            actor_user_id=None,
+            actor_roles=["system"],
+            action="insights.generate",
+            context={"period": half_term(today)[0], "insights": n},
+        )
         await session.commit()
         return n
 
@@ -69,6 +89,8 @@ async def retention_job(tenant_id: str, **_: object) -> dict:
         tenant = await session.get(Tenant, tid)
         assert tenant is not None
         out = await purge(session, load_settings(tenant.settings))
-        audit.record(session, actor_user_id=None, actor_roles=["system"], action="retention.purge", context=out)
+        audit.record(
+            session, actor_user_id=None, actor_roles=["system"], action="retention.purge", context=out
+        )
         await session.commit()
         return out

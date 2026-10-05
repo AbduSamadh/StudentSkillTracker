@@ -41,87 +41,105 @@ async def load_taxonomy(session: AsyncSession) -> int:
 
 TEMPLATES: list[dict] = [
     {
-        "key": "selection_notice", "type": MessageType.SELECTION_NOTICE, "wa": "squad_selection_v1",
+        "key": "selection_notice",
+        "type": MessageType.SELECTION_NOTICE,
+        "wa": "squad_selection_v1",
         "subject_en": "{{ child_name }} has been selected for {{ squad_name }}",
         "body_en": "Dear {{ guardian_name }},\n\nWe are delighted to let you know that {{ child_name }} has been "
-                   "selected for {{ squad_name }}. Training times and upcoming events are in the parent portal: "
-                   "{{ portal_link }}\n\n{{ school_name }}",
+        "selected for {{ squad_name }}. Training times and upcoming events are in the parent portal: "
+        "{{ portal_link }}\n\n{{ school_name }}",
         "subject_ar": "تم اختيار {{ child_name }} في {{ squad_name }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nيسعدنا إبلاغكم باختيار {{ child_name }} للانضمام إلى "
-                   "{{ squad_name }}. مواعيد التدريب والفعاليات القادمة متاحة في بوابة أولياء الأمور: {{ portal_link }}"
-                   "\n\n{{ school_name }}",
+        "{{ squad_name }}. مواعيد التدريب والفعاليات القادمة متاحة في بوابة أولياء الأمور: {{ portal_link }}"
+        "\n\n{{ school_name }}",
     },
     {
-        "key": "event_logistics", "type": MessageType.LOGISTICS, "wa": "event_logistics_v1",
+        "key": "event_logistics",
+        "type": MessageType.LOGISTICS,
+        "wa": "event_logistics_v1",
         "subject_en": "{{ edition_name }}: arrangements for {{ event_date }}",
         "body_en": "Dear {{ guardian_name }},\n\n{{ edition_name }} takes place on {{ event_date }} at {{ venue }}.\n"
-                   "Meeting time: {{ meet_time }}\nPick-up: {{ pickup_time }}\nPlease bring: {{ kit_list }}\n\n"
-                   "This message covers {{ child_names }}.\n\n{{ school_name }}",
+        "Meeting time: {{ meet_time }}\nPick-up: {{ pickup_time }}\nPlease bring: {{ kit_list }}\n\n"
+        "This message covers {{ child_names }}.\n\n{{ school_name }}",
         "subject_ar": "{{ edition_name }}: الترتيبات ليوم {{ event_date }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nتُقام {{ edition_name }} يوم {{ event_date }} في {{ venue }}.\n"
-                   "موعد التجمّع: {{ meet_time }}\nموعد الاستلام: {{ pickup_time }}\nيُرجى إحضار: {{ kit_list }}\n\n"
-                   "تشمل هذه الرسالة: {{ child_names }}.\n\n{{ school_name }}",
+        "موعد التجمّع: {{ meet_time }}\nموعد الاستلام: {{ pickup_time }}\nيُرجى إحضار: {{ kit_list }}\n\n"
+        "تشمل هذه الرسالة: {{ child_names }}.\n\n{{ school_name }}",
     },
     {
-        "key": "consent_request", "type": MessageType.CONSENT_REQUEST, "wa": None,
+        "key": "consent_request",
+        "type": MessageType.CONSENT_REQUEST,
+        "wa": None,
         "subject_en": "Your response is needed: {{ edition_name }}",
         "body_en": "Dear {{ guardian_name }},\n\nPlease review and respond to the {{ consent_label }} request for "
-                   "{{ child_names }} for {{ edition_name }} on {{ event_date }}. You can respond in the parent "
-                   "portal: {{ portal_link }}\n\n{{ school_name }}",
+        "{{ child_names }} for {{ edition_name }} on {{ event_date }}. You can respond in the parent "
+        "portal: {{ portal_link }}\n\n{{ school_name }}",
         "subject_ar": "يُرجى الرد: {{ edition_name }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nيُرجى مراجعة طلب {{ consent_label_ar }} الخاص بـ{{ child_names }} "
-                   "للمشاركة في {{ edition_name }} يوم {{ event_date }}، والرد عبر بوابة أولياء الأمور: {{ portal_link }}"
-                   "\n\n{{ school_name }}",
+        "للمشاركة في {{ edition_name }} يوم {{ event_date }}، والرد عبر بوابة أولياء الأمور: {{ portal_link }}"
+        "\n\n{{ school_name }}",
     },
     {
-        "key": "result_notification", "type": MessageType.RESULT_NOTIFICATION, "wa": "result_notification_v1",
+        "key": "result_notification",
+        "type": MessageType.RESULT_NOTIFICATION,
+        "wa": "result_notification_v1",
         "subject_en": "{{ edition_name }}: result for {{ child_name }}",
         "body_en": "Dear {{ guardian_name }},\n\nAt {{ edition_name }}, {{ child_name }}'s entry {{ result_summary }}."
-                   "{% if team_members %} Team-mates: {{ team_members }}.{% endif %}\n\nThe full history is in the "
-                   "parent portal: {{ portal_link }}\n\n{{ school_name }}",
+        "{% if team_members %} Team-mates: {{ team_members }}.{% endif %}\n\nThe full history is in the "
+        "parent portal: {{ portal_link }}\n\n{{ school_name }}",
         "subject_ar": "{{ edition_name }}: نتيجة {{ child_name }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nفي {{ edition_name }}، حصلت مشاركة {{ child_name }} على: "
-                   "{{ result_summary }}.{% if team_members %} أعضاء الفريق: {{ team_members }}.{% endif %}\n\n"
-                   "السجل الكامل متاح في بوابة أولياء الأمور: {{ portal_link }}\n\n{{ school_name }}",
+        "{{ result_summary }}.{% if team_members %} أعضاء الفريق: {{ team_members }}.{% endif %}\n\n"
+        "السجل الكامل متاح في بوابة أولياء الأمور: {{ portal_link }}\n\n{{ school_name }}",
     },
     {
-        "key": "progress_report", "type": MessageType.PROGRESS_REPORT, "wa": None,
+        "key": "progress_report",
+        "type": MessageType.PROGRESS_REPORT,
+        "wa": None,
         "subject_en": "Half-term progress: {{ child_names }}",
         "body_en": "Dear {{ guardian_name }},\n\nHere is this half-term's update from the STEM programme, reviewed by "
-                   "{{ child_names }}'s coach:\n\n{{ progress_summary }}\n\nSee the full skills profile in the parent "
-                   "portal: {{ portal_link }}\n\n{{ school_name }}",
+        "{{ child_names }}'s coach:\n\n{{ progress_summary }}\n\nSee the full skills profile in the parent "
+        "portal: {{ portal_link }}\n\n{{ school_name }}",
         "subject_ar": "التقدّم في هذا النصف من الفصل: {{ child_names }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nإليكم مستجدات هذا النصف من الفصل من برنامج العلوم والتكنولوجيا، "
-                   "بعد مراجعتها من المدرّب:\n\n{{ progress_summary }}\n\nملف المهارات الكامل متاح في بوابة أولياء "
-                   "الأمور: {{ portal_link }}\n\n{{ school_name }}",
+        "بعد مراجعتها من المدرّب:\n\n{{ progress_summary }}\n\nملف المهارات الكامل متاح في بوابة أولياء "
+        "الأمور: {{ portal_link }}\n\n{{ school_name }}",
     },
     {
-        "key": "celebration", "type": MessageType.CELEBRATION, "wa": "celebration_v1",
+        "key": "celebration",
+        "type": MessageType.CELEBRATION,
+        "wa": "celebration_v1",
         "subject_en": "Congratulations, {{ child_name }}!",
         "body_en": "Dear {{ guardian_name }},\n\n{{ celebration_note }}\n\nWell done from everyone at {{ school_name }}.",
         "subject_ar": "تهانينا لـ{{ child_name }}!",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\n{{ celebration_note_ar }}\n\nتهانينا من أسرة {{ school_name }}.",
     },
     {
-        "key": "attendance_concern", "type": MessageType.ATTENDANCE_CONCERN, "wa": None,
+        "key": "attendance_concern",
+        "type": MessageType.ATTENDANCE_CONCERN,
+        "wa": None,
         "subject_en": "{{ squad_name }}: a quick conversation about attendance",
         "body_en": "Dear {{ guardian_name }},\n\nI wanted to get in touch personally about {{ child_name }}'s recent "
-                   "attendance at {{ squad_name }} training. Could we find a time to talk this week?\n\n{{ school_name }}",
+        "attendance at {{ squad_name }} training. Could we find a time to talk this week?\n\n{{ school_name }}",
         "subject_ar": "{{ squad_name }}: حديث قصير حول الحضور",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nأودّ التواصل معكم شخصيًا بشأن حضور {{ child_name }} مؤخرًا لتدريبات "
-                   "{{ squad_name }}. هل يمكننا تحديد موعد للحديث هذا الأسبوع؟\n\n{{ school_name }}",
+        "{{ squad_name }}. هل يمكننا تحديد موعد للحديث هذا الأسبوع؟\n\n{{ school_name }}",
     },
     {
-        "key": "non_selection", "type": MessageType.NON_SELECTION, "wa": None,
+        "key": "non_selection",
+        "type": MessageType.NON_SELECTION,
+        "wa": None,
         "subject_en": "{{ squad_name }} selection",
         "body_en": "Dear {{ guardian_name }},\n\nI wanted to let you know personally about this round of selection for "
-                   "{{ squad_name }}, and talk about next steps for {{ child_name }}.\n\n{{ school_name }}",
+        "{{ squad_name }}, and talk about next steps for {{ child_name }}.\n\n{{ school_name }}",
         "subject_ar": "الاختيار لـ{{ squad_name }}",
         "body_ar": "{{ guardian_name }} المحترم/ة،\n\nأودّ إبلاغكم شخصيًا بنتائج جولة الاختيار لـ{{ squad_name }}، "
-                   "والحديث عن الخطوات القادمة لـ{{ child_name }}.\n\n{{ school_name }}",
+        "والحديث عن الخطوات القادمة لـ{{ child_name }}.\n\n{{ school_name }}",
     },
     {
-        "key": "emergency_notice", "type": MessageType.EMERGENCY, "wa": "emergency_notice_v1",
+        "key": "emergency_notice",
+        "type": MessageType.EMERGENCY,
+        "wa": "emergency_notice_v1",
         "subject_en": "URGENT — {{ school_name }}",
         "body_en": "{{ notice_en }}\n\n{{ school_name }}",
         "subject_ar": "عاجل — {{ school_name }}",
@@ -180,14 +198,25 @@ async def load_templates(session: AsyncSession, approver_id=None) -> int:  # noq
     for t in TEMPLATES:
         if t["key"] in existing:
             continue
-        session.add(MessageTemplate(
-            key=t["key"], message_type=t["type"], version=1, status=TemplateStatus.APPROVED,
-            subject_en=t["subject_en"], body_en=t["body_en"], subject_ar=t["subject_ar"], body_ar=t["body_ar"],
-            variables=variables_in(t["body_en"], t["body_ar"], t["subject_en"], t["subject_ar"]),
-            whatsapp_template_name=t["wa"],
-            whatsapp_status=WhatsAppTemplateStatus.APPROVED if t["wa"] else WhatsAppTemplateStatus.NOT_SUBMITTED,
-            approved_by_id=approver_id, approved_at=now,
-        ))
+        session.add(
+            MessageTemplate(
+                key=t["key"],
+                message_type=t["type"],
+                version=1,
+                status=TemplateStatus.APPROVED,
+                subject_en=t["subject_en"],
+                body_en=t["body_en"],
+                subject_ar=t["subject_ar"],
+                body_ar=t["body_ar"],
+                variables=variables_in(t["body_en"], t["body_ar"], t["subject_en"], t["subject_ar"]),
+                whatsapp_template_name=t["wa"],
+                whatsapp_status=WhatsAppTemplateStatus.APPROVED
+                if t["wa"]
+                else WhatsAppTemplateStatus.NOT_SUBMITTED,
+                approved_by_id=approver_id,
+                approved_at=now,
+            )
+        )
         n += 1
     await session.flush()
     return n

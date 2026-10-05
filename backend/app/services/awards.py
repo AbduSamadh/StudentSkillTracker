@@ -44,13 +44,21 @@ async def create_verified(
     idempotency_key: str | None = None,
 ) -> tuple[SkillAward, bool]:
     if source == AwardSource.RUBRIC:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Rubric awards are proposed from results, then confirmed")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Rubric awards are proposed from results, then confirmed"
+        )
     if source == AwardSource.SELF:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Self-assessments must be countersigned, not granted")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Self-assessments must be countersigned, not granted"
+        )
     if source == AwardSource.ARTEFACT and artefact_media_id is None:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "An artefact award needs the artefact attached")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "An artefact award needs the artefact attached"
+        )
     if idempotency_key:
-        existing = await session.scalar(select(SkillAward).where(SkillAward.idempotency_key == idempotency_key))
+        existing = await session.scalar(
+            select(SkillAward).where(SkillAward.idempotency_key == idempotency_key)
+        )
         if existing is not None:
             return existing, False
     if await session.get(Skill, skill_id) is None:
@@ -88,7 +96,9 @@ def _hook(a: SkillAward) -> dict:
     }
 
 
-async def propose_from_rubric(session: AsyncSession, result: Result, edition: CompetitionEdition) -> list[SkillAward]:
+async def propose_from_rubric(
+    session: AsyncSession, result: Result, edition: CompetitionEdition
+) -> list[SkillAward]:
     """Turn rubric criterion scores into PROPOSED awards for each participant."""
     if not edition.rubric or not result.rubric_scores:
         return []
@@ -129,9 +139,13 @@ async def propose_from_rubric(session: AsyncSession, result: Result, edition: Co
     return proposed
 
 
-async def confirm(session: AsyncSession, award: SkillAward, user_id: uuid.UUID, level: int | None = None) -> None:
+async def confirm(
+    session: AsyncSession, award: SkillAward, user_id: uuid.UUID, level: int | None = None
+) -> None:
     if award.status != AwardStatus.PROPOSED:
-        raise HTTPException(status.HTTP_409_CONFLICT, f"Award {award.id} is {award.status.value}, not proposed")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, f"Award {award.id} is {award.status.value}, not proposed"
+        )
     now = datetime.now(UTC)
     if level is not None:
         award.level = level

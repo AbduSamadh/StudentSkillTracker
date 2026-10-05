@@ -346,6 +346,7 @@ class RevokeIn(BaseModel):
 class AwardOut(ORM):
     id: uuid.UUID
     student_id: uuid.UUID
+    student_name: str | None = None
     skill_id: uuid.UUID
     skill_code: str | None = None
     skill_name: str | None = None

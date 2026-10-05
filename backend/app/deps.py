@@ -68,10 +68,14 @@ def _bearer(request: Request) -> str:
     header = request.headers.get("authorization", "")
     if header.lower().startswith("bearer "):
         return header[7:].strip()
-    raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated", headers={"WWW-Authenticate": "Bearer"})
+    raise HTTPException(
+        status.HTTP_401_UNAUTHORIZED, "Not authenticated", headers={"WWW-Authenticate": "Bearer"}
+    )
 
 
-async def load_principal(session: AsyncSession, user_id: uuid.UUID, tenant_id: uuid.UUID, mfa: bool) -> Principal:
+async def load_principal(
+    session: AsyncSession, user_id: uuid.UUID, tenant_id: uuid.UUID, mfa: bool
+) -> Principal:
     user = await session.get(User, user_id)
     if user is None or not user.is_active:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Account not active")

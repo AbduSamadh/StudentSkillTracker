@@ -71,9 +71,7 @@ class SkillAward(TenantScoped, Base):
     verified_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     verified_at: Mapped[datetime | None]
     # Self-assessments require a teacher countersign to count.
-    countersigned_by_id: Mapped[uuid.UUID | None] = mapped_column(
-        ForeignKey("users.id", ondelete="SET NULL")
-    )
+    countersigned_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     revoked_by_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     revoked_at: Mapped[datetime | None]
     revoke_reason: Mapped[str | None] = mapped_column(Text)

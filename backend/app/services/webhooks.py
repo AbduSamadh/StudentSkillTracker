@@ -33,7 +33,9 @@ async def emit(session: AsyncSession, event: WebhookEvent, payload: dict) -> int
                 WebhookDelivery(
                     subscription_id=sub.id,
                     event=event.value,
-                    payload=_jsonable({"event": event.value, "occurred_at": datetime.now(UTC), "data": payload}),
+                    payload=_jsonable(
+                        {"event": event.value, "occurred_at": datetime.now(UTC), "data": payload}
+                    ),
                     next_attempt_at=datetime.now(UTC),
                 )
             )

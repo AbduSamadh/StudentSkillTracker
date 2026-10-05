@@ -41,8 +41,12 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
         import sentry_sdk
 
         # send_default_pii=False: request bodies and user details never leave for Sentry.
-        sentry_sdk.init(dsn=settings.sentry_dsn, environment=settings.environment, send_default_pii=False,
-                        traces_sample_rate=0.1)
+        sentry_sdk.init(
+            dsn=settings.sentry_dsn,
+            environment=settings.environment,
+            send_default_pii=False,
+            traces_sample_rate=0.1,
+        )
     if settings.otel_enabled:
         from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
 
@@ -86,13 +90,33 @@ async def request_context(request: Request, call_next):  # noqa: ANN001, ANN201
     response.headers["Cache-Control"] = response.headers.get("Cache-Control", "no-store")
     if get_settings().environment in ("production", "staging"):
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    log.info("request", extra={"request_id": rid, "path": request.url.path, "status": response.status_code,
-                               "duration_ms": round((time.perf_counter() - start) * 1000, 1)})
+    log.info(
+        "request",
+        extra={
+            "request_id": rid,
+            "path": request.url.path,
+            "status": response.status_code,
+            "duration_ms": round((time.perf_counter() - start) * 1000, 1),
+        },
+    )
     return response
 
 
-for r in (auth, students, competitions, squads, capture, skills, messages, consents, portal, reports, operations,
-          admin, inbound):
+for r in (
+    auth,
+    students,
+    competitions,
+    squads,
+    capture,
+    skills,
+    messages,
+    consents,
+    portal,
+    reports,
+    operations,
+    admin,
+    inbound,
+):
     app.include_router(r.router, prefix="/api/v1")
 
 
@@ -113,4 +137,6 @@ async def health() -> JSONResponse:
         checks["redis"] = f"error: {type(exc).__name__}"
     checks["object_storage"] = "ok" if await storage.healthy() else "error"
     ok = all(v == "ok" for v in checks.values())
-    return JSONResponse({"status": "ok" if ok else "degraded", "checks": checks}, status_code=200 if ok else 503)
+    return JSONResponse(
+        {"status": "ok" if ok else "degraded", "checks": checks}, status_code=200 if ok else 503
+    )

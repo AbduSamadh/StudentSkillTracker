@@ -17,7 +17,9 @@ class RequestMeta:
     request_id: str | None = None
 
 
-request_meta: contextvars.ContextVar[RequestMeta | None] = contextvars.ContextVar("request_meta", default=None)
+request_meta: contextvars.ContextVar[RequestMeta | None] = contextvars.ContextVar(
+    "request_meta", default=None
+)
 
 
 def record(

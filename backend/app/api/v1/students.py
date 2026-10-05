@@ -1,5 +1,6 @@
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import Response
@@ -69,7 +70,11 @@ async def list_students(
         )
     if flag is not None:
         stmt = stmt.where(
-            Student.id.in_(select(StudentFlag.student_id).where(StudentFlag.kind == flag, StudentFlag.resolved_at.is_(None)))
+            Student.id.in_(
+                select(StudentFlag.student_id).where(
+                    StudentFlag.kind == flag, StudentFlag.resolved_at.is_(None)
+                )
+            )
         )
     if q:
         like = f"%{q.lower()}%"
@@ -83,9 +88,13 @@ async def list_students(
         )
     total = await ctx.session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = (
-        await ctx.session.scalars(stmt.order_by(Student.year_group, Student.family_name).limit(limit).offset(offset))
+        await ctx.session.scalars(
+            stmt.order_by(Student.year_group, Student.family_name).limit(limit).offset(offset)
+        )
     ).all()
-    ctx.audit("student.list", "student", None, context={"count": len(rows), "student_ids": [s.id for s in rows]})
+    ctx.audit(
+        "student.list", "student", None, context={"count": len(rows), "student_ids": [s.id for s in rows]}
+    )
     return Page(items=[StudentOut.model_validate(s) for s in rows], total=total, limit=limit, offset=offset)
 
 
@@ -128,18 +137,31 @@ async def get_student(student_id: uuid.UUID, ctx: CtxDep) -> StudentDetail:
             )
         )
     squads = [
-        {"squad_id": m.squad_id, "squad_name": sq.name, "role": m.role, "is_reserve": m.is_reserve,
-         "status": m.status.value, "joined_on": m.joined_on}
+        {
+            "squad_id": m.squad_id,
+            "squad_name": sq.name,
+            "role": m.role,
+            "is_reserve": m.is_reserve,
+            "status": m.status.value,
+            "joined_on": m.joined_on,
+        }
         for m, sq in (
             await ctx.session.execute(
-                select(SquadMembership, Squad).join(Squad, Squad.id == SquadMembership.squad_id)
+                select(SquadMembership, Squad)
+                .join(Squad, Squad.id == SquadMembership.squad_id)
                 .where(SquadMembership.student_id == s.id)
             )
         ).all()
     ]
     flags = [
-        {"id": f.id, "kind": f.kind.value, "rule": f.rule, "explanation": f.explanation, "raised_at": f.raised_at,
-         "claim_type": "inferred"}
+        {
+            "id": f.id,
+            "kind": f.kind.value,
+            "rule": f.rule,
+            "explanation": f.explanation,
+            "raised_at": f.raised_at,
+            "claim_type": "inferred",
+        }
         for f in (
             await ctx.session.scalars(
                 select(StudentFlag).where(StudentFlag.student_id == s.id, StudentFlag.resolved_at.is_(None))
@@ -162,7 +184,7 @@ async def build_profile(ctx, s: Student) -> dict:  # noqa: ANN001
     for a in awards:
         if a.status == AwardStatus.VERIFIED and (a.skill_id not in best or a.level >= best[a.skill_id].level):
             best[a.skill_id] = a
-    skills = [
+    skills: list[dict[str, Any]] = [
         {
             "skill_id": a.skill_id,
             "code": a.skill.code,
@@ -322,4 +344,3 @@ async def update_goal(student_id: uuid.UUID, goal_id: uuid.UUID, body: GoalPatch
     goal.status = body.status  # type: ignore[assignment]
     ctx.audit("goal.update", "student", s.id, context={"goal_id": goal.id, "status": body.status})
     return GoalOut.model_validate(goal)
-

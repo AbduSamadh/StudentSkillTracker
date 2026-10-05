@@ -94,7 +94,11 @@ def _names(names: list[str], lang: Language) -> str:
     if len(names) <= 1:
         return "".join(names)
     joiner = " و" if lang == Language.AR else " and "
-    return ", ".join(names[:-1]) + joiner + names[-1] if lang == Language.EN else "، ".join(names[:-1]) + joiner + names[-1]
+    return (
+        ", ".join(names[:-1]) + joiner + names[-1]
+        if lang == Language.EN
+        else "، ".join(names[:-1]) + joiner + names[-1]
+    )
 
 
 async def build_context(
@@ -121,14 +125,19 @@ async def build_context(
             ctx.update(
                 edition_name=ed.name,
                 competition_name=ed.competition.name if ed.competition else ed.name,
-                event_date=fmt_date_ar(ed.event_starts) if lang == Language.AR else fmt_date_en(ed.event_starts),
+                event_date=fmt_date_ar(ed.event_starts)
+                if lang == Language.AR
+                else fmt_date_en(ed.event_starts),
                 venue=ed.venue or "",
             )
     if message.squad_id:
         sq = await session.get(Squad, message.squad_id)
         if sq:
             ctx["squad_name"] = sq.name
-    if message.message_type in (MessageType.RESULT_NOTIFICATION, MessageType.CELEBRATION) and message.edition_id:
+    if (
+        message.message_type in (MessageType.RESULT_NOTIFICATION, MessageType.CELEBRATION)
+        and message.edition_id
+    ):
         ctx.update(await _result_context(session, message, family, lang))
     if message.message_type == MessageType.PROGRESS_REPORT:
         ctx["progress_summary"] = await _progress_context(session, family, lang)
@@ -151,7 +160,8 @@ async def _result_context(session: AsyncSession, message: Message, family: Famil
     for r, _sid in rows:
         if r.placement and r.field_size:
             lines.append(
-                f"المركز {r.placement} من أصل {r.field_size}" if lang == Language.AR
+                f"المركز {r.placement} من أصل {r.field_size}"
+                if lang == Language.AR
                 else f"placed {r.placement} of {r.field_size}"
             )
         if r.award_title:
@@ -164,11 +174,16 @@ async def _result_context(session: AsyncSession, message: Message, family: Famil
     team = sorted(mates_named)
     if mates_hidden:
         team.append(
-            f"{mates_hidden} من زملاء الفريق" if lang == Language.AR
+            f"{mates_hidden} من زملاء الفريق"
+            if lang == Language.AR
             else f"{mates_hidden} other{'s' if mates_hidden != 1 else ''}"
         )
-    return {"result_summary": "؛ ".join(dict.fromkeys(lines)) if lang == Language.AR else "; ".join(dict.fromkeys(lines)),
-            "team_members": _names(team, lang)}
+    return {
+        "result_summary": "؛ ".join(dict.fromkeys(lines))
+        if lang == Language.AR
+        else "; ".join(dict.fromkeys(lines)),
+        "team_members": _names(team, lang),
+    }
 
 
 async def _progress_context(session: AsyncSession, family: Family, lang: Language) -> str:
@@ -177,8 +192,10 @@ async def _progress_context(session: AsyncSession, family: Family, lang: Languag
     for st in family.students:
         rows = (
             await session.scalars(
-                select(Insight).where(Insight.student_id == st.id, Insight.status == InsightStatus.APPROVED)
-                .order_by(Insight.created_at.desc()).limit(4)
+                select(Insight)
+                .where(Insight.student_id == st.id, Insight.status == InsightStatus.APPROVED)
+                .order_by(Insight.created_at.desc())
+                .limit(4)
             )
         ).all()
         for i in rows:
@@ -203,7 +220,9 @@ def channel_order(guardian: Guardian, template: MessageTemplate | None) -> list[
         if ch in out:
             continue
         if ch == Channel.WHATSAPP and not (
-            guardian.whatsapp_enc and template and template.whatsapp_template_name
+            guardian.whatsapp_enc
+            and template
+            and template.whatsapp_template_name
             and template.whatsapp_status == WhatsAppTemplateStatus.APPROVED
         ):
             continue
@@ -261,7 +280,9 @@ async def opted_out(session: AsyncSession, guardian_id: uuid.UUID, category: Mes
         return False
     return (
         await session.scalar(
-            select(func.count()).select_from(CommunicationOptOut).where(
+            select(func.count())
+            .select_from(CommunicationOptOut)
+            .where(
                 CommunicationOptOut.guardian_id == guardian_id,
                 CommunicationOptOut.category == category,
                 CommunicationOptOut.opted_back_in_at.is_(None),
@@ -272,20 +293,28 @@ async def opted_out(session: AsyncSession, guardian_id: uuid.UUID, category: Mes
 
 
 async def evaluate(
-    session: AsyncSession, settings: TenantSettings, message: Message, guardian_id: uuid.UUID,
-    student_ids: list[uuid.UUID], now: datetime,
+    session: AsyncSession,
+    settings: TenantSettings,
+    message: Message,
+    guardian_id: uuid.UUID,
+    student_ids: list[uuid.UUID],
+    now: datetime,
 ) -> Verdict:
     for sid in student_ids:
         if await communications_blocked(session, sid, guardian_id):
             return Verdict(DeliveryStatus.BLOCKED_CONSENT, "Guardian has withdrawn communications consent")
     if await opted_out(session, guardian_id, message.message_type):
-        return Verdict(DeliveryStatus.BLOCKED_OPT_OUT, f"Guardian opted out of {message.message_type.value} messages")
+        return Verdict(
+            DeliveryStatus.BLOCKED_OPT_OUT, f"Guardian opted out of {message.message_type.value} messages"
+        )
     sent = await sent_in_last_week(session, guardian_id, now)
     if message.is_emergency:
         return Verdict(DeliveryStatus.PENDING, sent_this_week=len(sent))
     hold = quiet_hours_hold(settings, now)
     if hold is not None:
-        return Verdict(DeliveryStatus.HELD_QUIET_HOURS, "Quiet hours", hold_until=hold, sent_this_week=len(sent))
+        return Verdict(
+            DeliveryStatus.HELD_QUIET_HOURS, "Quiet hours", hold_until=hold, sent_this_week=len(sent)
+        )
     if len(sent) >= settings.weekly_message_cap:
         return Verdict(
             DeliveryStatus.THROTTLED,

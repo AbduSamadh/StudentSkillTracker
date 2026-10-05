@@ -82,7 +82,13 @@ def decode_access_token(token: str) -> dict[str, Any]:
 def create_scoped_token(purpose: str, data: dict[str, Any], minutes: int) -> str:
     """Short-lived signed token for a single purpose (MFA enrolment step, opt-out link)."""
     now = datetime.now(UTC)
-    payload = {**data, "purpose": purpose, "aud": JWT_AUDIENCE, "iat": now, "exp": now + timedelta(minutes=minutes)}
+    payload = {
+        **data,
+        "purpose": purpose,
+        "aud": JWT_AUDIENCE,
+        "iat": now,
+        "exp": now + timedelta(minutes=minutes),
+    }
     return jwt.encode(payload, get_settings().jwt_secret, algorithm=JWT_ALG)
 
 

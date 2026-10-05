@@ -12,9 +12,14 @@ from app.db import tenant_session
 from tests.conftest import World
 
 
-async def _generate(client: AsyncClient, world: World, rtype: str, fmt: str, actor: str = "leader", **params) -> dict:  # noqa: ANN003
-    r = await client.post(f"/api/v1/reports/{rtype}/generate", json={"format": fmt, "params": params},
-                          headers=world[actor].headers)
+async def _generate(
+    client: AsyncClient, world: World, rtype: str, fmt: str, actor: str = "leader", **params
+) -> dict:  # noqa: ANN003
+    r = await client.post(
+        f"/api/v1/reports/{rtype}/generate",
+        json={"format": fmt, "params": params},
+        headers=world[actor].headers,
+    )
     assert r.status_code == 202, r.text
     job = (await client.get(f"/api/v1/reports/jobs/{r.json()['id']}", headers=world[actor].headers)).json()
     assert job["status"] == "succeeded", job
@@ -30,7 +35,14 @@ async def _download(client: AsyncClient, url: str) -> bytes:
 
 async def test_leader_dashboard_is_six_numbers_with_denominators(client, world: World) -> None:  # noqa: ANN001
     d = (await client.get("/api/v1/dashboard/leader", headers=world["leader"].headers)).json()
-    assert set(d) >= {"participation", "skills_coverage", "spend", "upcoming_events", "flagged_students", "trend"}
+    assert set(d) >= {
+        "participation",
+        "skills_coverage",
+        "spend",
+        "upcoming_events",
+        "flagged_students",
+        "trend",
+    }
     assert d["participation"]["denominator"] is not None
     # Alpha has 4 students on roll: a percentage on that base must be withheld, with the reason.
     assert d["participation"]["withheld"] is True
@@ -51,8 +63,13 @@ async def test_every_report_type_exports_in_every_format(client, world: World) -
     from app.models import Season
 
     async with tenant_session(world.tenant) as s:
-        s.add(Season(name="Test season", starts_on=__import__("datetime").date(2026, 8, 15),
-                     ends_on=__import__("datetime").date(2027, 7, 15)))
+        s.add(
+            Season(
+                name="Test season",
+                starts_on=__import__("datetime").date(2026, 8, 15),
+                ends_on=__import__("datetime").date(2027, 7, 15),
+            )
+        )
         await s.commit()
     for rtype, params in cases:
         actor = "admin" if rtype == "kit_utilisation" else "leader"
@@ -76,7 +93,9 @@ async def test_pdf_and_html_carry_branding_and_the_generating_user(client, world
     assert "Withheld figures" in html  # small base: the withheld list must be shown, not dropped
 
 
-async def test_student_without_media_consent_is_pseudonymised_in_generated_reports(client, world: World) -> None:  # noqa: ANN001
+async def test_student_without_media_consent_is_pseudonymised_in_generated_reports(
+    client, world: World
+) -> None:  # noqa: ANN001
     job = await _generate(client, world, "squad_readiness", "html", squad_id=str(world.ids["squad_a"]))
     html = (await _download(client, job["download_url"])).decode()
     assert "Ali Test" not in html  # a2 has no media consent
@@ -86,31 +105,46 @@ async def test_student_without_media_consent_is_pseudonymised_in_generated_repor
 
 async def test_teacher_cannot_generate_whole_school_reports(client, world: World) -> None:  # noqa: ANN001
     for rtype in ("season_review", "cohort_coverage", "inspection_evidence"):
-        r = await client.post(f"/api/v1/reports/{rtype}/generate", json={}, headers=world["teacher_a"].headers)
+        r = await client.post(
+            f"/api/v1/reports/{rtype}/generate", json={}, headers=world["teacher_a"].headers
+        )
         assert r.status_code == 403
 
 
 async def test_media_upload_refuses_students_without_consent(client, world: World) -> None:  # noqa: ANN001
     files = {"file": ("photo.jpg", b"\xff\xd8\xff fake jpeg", "image/jpeg")}
-    r = await client.post("/api/v1/media", files=files, data={"student_ids": f"{world.ids['a2']}"},
-                          headers=world["teacher_a"].headers)
+    r = await client.post(
+        "/api/v1/media",
+        files=files,
+        data={"student_ids": f"{world.ids['a2']}"},
+        headers=world["teacher_a"].headers,
+    )
     assert r.status_code == 422 and str(world.ids["a2"]) in r.text
-    ok = await client.post("/api/v1/media", files=files, data={"student_ids": f"{world.ids['a1']}",
-                                                               "caption": "Pit stop"},
-                           headers=world["teacher_a"].headers)
+    ok = await client.post(
+        "/api/v1/media",
+        files=files,
+        data={"student_ids": f"{world.ids['a1']}", "caption": "Pit stop"},
+        headers=world["teacher_a"].headers,
+    )
     assert ok.status_code == 201
 
 
 async def test_media_disappears_everywhere_when_consent_is_withdrawn(client, world: World) -> None:  # noqa: ANN001
     files = {"file": ("photo.jpg", b"\xff\xd8\xff another", "image/jpeg")}
-    up = await client.post("/api/v1/media", files=files, data={"student_ids": f"{world.ids['sib']}",
-                                                               "caption": "Sam on stage"},
-                           headers=world["teacher_a"].headers)
+    up = await client.post(
+        "/api/v1/media",
+        files=files,
+        data={"student_ids": f"{world.ids['sib']}", "caption": "Sam on stage"},
+        headers=world["teacher_a"].headers,
+    )
     mid = up.json()["id"]
     listed = {m["id"] for m in (await client.get("/api/v1/media", headers=world["admin"].headers)).json()}
     assert mid in listed
-    w = await client.post("/api/v1/portal/consents/withdraw", json={"student_id": str(world.ids["sib"]),
-                                                                   "purpose": "media"}, headers=world["parent_a"].headers)
+    w = await client.post(
+        "/api/v1/portal/consents/withdraw",
+        json={"student_id": str(world.ids["sib"]), "purpose": "media"},
+        headers=world["parent_a"].headers,
+    )
     assert w.status_code == 200
     listed = {m["id"] for m in (await client.get("/api/v1/media", headers=world["admin"].headers)).json()}
     assert mid not in listed
@@ -119,23 +153,40 @@ async def test_media_disappears_everywhere_when_consent_is_withdrawn(client, wor
         rows = (await s.execute(text("SELECT id FROM media_renderable WHERE id = :i"), {"i": mid})).all()
     assert rows == []
     # Restore for other tests.
-    await client.post("/api/v1/portal/consents", json={"student_id": str(world.ids["sib"]), "purpose": "media",
-                                                       "decision": "granted"}, headers=world["parent_a"].headers)
+    await client.post(
+        "/api/v1/portal/consents",
+        json={"student_id": str(world.ids["sib"]), "purpose": "media", "decision": "granted"},
+        headers=world["parent_a"].headers,
+    )
 
 
 async def test_subject_access_export_is_complete_and_fast(client, world: World) -> None:  # noqa: ANN001
     t0 = time.perf_counter()
-    r = await client.get(f"/api/v1/students/{world.ids['a1']}/export?reason=Parent%20request%20ref%2042",
-                         headers=world["leader"].headers)
+    r = await client.get(
+        f"/api/v1/students/{world.ids['a1']}/export?reason=Parent%20request%20ref%2042",
+        headers=world["leader"].headers,
+    )
     elapsed = time.perf_counter() - t0
     assert r.status_code == 200 and elapsed < 60
     z = zipfile.ZipFile(io.BytesIO(r.content))
     names = set(z.namelist())
-    assert {"student.json", "guardians.json", "skill_awards.json", "consents.json", "results.json",
-            "messages_received_by_family.json", "access_log.json", "summary.html"} <= names
+    assert {
+        "student.json",
+        "guardians.json",
+        "skill_awards.json",
+        "consents.json",
+        "results.json",
+        "messages_received_by_family.json",
+        "access_log.json",
+        "summary.html",
+    } <= names
     assert b"ava.parent@example.com" in z.read("guardians.json")
-    audit = (await client.get(f"/api/v1/audit?subject_id={world.ids['a1']}&action=student.subject_access_export",
-                              headers=world["leader"].headers)).json()
+    audit = (
+        await client.get(
+            f"/api/v1/audit?subject_id={world.ids['a1']}&action=student.subject_access_export",
+            headers=world["leader"].headers,
+        )
+    ).json()
     assert audit["items"][0]["reason"] == "Parent request ref 42"
 
 

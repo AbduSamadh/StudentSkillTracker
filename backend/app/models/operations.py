@@ -84,7 +84,9 @@ class AssetRequest(TenantScoped, Base):
 class BudgetLine(TenantScoped, Base):
     __tablename__ = "budget_lines"
 
-    season_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("seasons.id", ondelete="SET NULL"), index=True)
+    season_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("seasons.id", ondelete="SET NULL"), index=True
+    )
     edition_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("competition_editions.id", ondelete="SET NULL"), index=True
     )

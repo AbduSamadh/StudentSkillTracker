@@ -29,7 +29,20 @@ from app.services.clashes import exam_clash_for_year
 from app.services.readiness import ReadinessResult, readiness_for, shared_gaps
 from app.tenancy import TenantSettings
 
-AR_MONTHS = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"]
+AR_MONTHS = [
+    "يناير",
+    "فبراير",
+    "مارس",
+    "أبريل",
+    "مايو",
+    "يونيو",
+    "يوليو",
+    "أغسطس",
+    "سبتمبر",
+    "أكتوبر",
+    "نوفمبر",
+    "ديسمبر",
+]
 ALMOST_READY_MARGIN = Decimal("0.15")
 
 
@@ -49,7 +62,12 @@ class Check:
     detail_ar: str
 
     def as_dict(self) -> dict:
-        return {"key": self.key, "passed": self.passed, "detail_en": self.detail_en, "detail_ar": self.detail_ar}
+        return {
+            "key": self.key,
+            "passed": self.passed,
+            "detail_en": self.detail_en,
+            "detail_ar": self.detail_ar,
+        }
 
 
 async def season_budget_remaining(session: AsyncSession) -> dict[uuid.UUID, Decimal | None]:
@@ -65,7 +83,9 @@ async def season_budget_remaining(session: AsyncSession) -> dict[uuid.UUID, Deci
         ).all()
     )
     return {
-        s.id: None if s.budget_envelope is None else Decimal(s.budget_envelope) - Decimal(committed.get(s.id, 0))
+        s.id: None
+        if s.budget_envelope is None
+        else Decimal(s.budget_envelope) - Decimal(committed.get(s.id, 0))
         for s in seasons
     }
 
@@ -115,8 +135,12 @@ async def competition_recommendations(
         res: ReadinessResult = (await readiness_for(session, [student.id], ed))[student.id]
         if res.score is None:
             checks.append(
-                Check("readiness", False, "skill requirements are not catalogued yet",
-                      "متطلبات المهارات لم تُحدَّد بعد")
+                Check(
+                    "readiness",
+                    False,
+                    "skill requirements are not catalogued yet",
+                    "متطلبات المهارات لم تُحدَّد بعد",
+                )
             )
         else:
             ok = res.score >= threshold
@@ -146,8 +170,12 @@ async def competition_recommendations(
             checks.append(Check("budget", True, "there is no entry fee", "لا توجد رسوم مشاركة"))
         elif remaining is None:
             checks.append(
-                Check("budget", True, f"the {ed.currency} {fee:.0f} entry fee has no season envelope to check against",
-                      f"رسوم المشاركة {fee:.0f} {ed.currency} دون ميزانية موسمية للمقارنة")
+                Check(
+                    "budget",
+                    True,
+                    f"the {ed.currency} {fee:.0f} entry fee has no season envelope to check against",
+                    f"رسوم المشاركة {fee:.0f} {ed.currency} دون ميزانية موسمية للمقارنة",
+                )
             )
         else:
             within = fee <= remaining
@@ -223,7 +251,11 @@ def _join_en(parts: list[str]) -> str:
 
 
 async def squad_readiness(
-    session: AsyncSession, settings: TenantSettings, squad: Squad, today: date, edition_id: uuid.UUID | None = None
+    session: AsyncSession,
+    settings: TenantSettings,
+    squad: Squad,
+    today: date,
+    edition_id: uuid.UUID | None = None,
 ) -> dict:
     """Readiness per member for each upcoming target edition, the shared gap list, and a
     suggested focus for the next session."""
@@ -261,11 +293,17 @@ async def squad_readiness(
             for s in g["students"]:
                 s["name"] = names.get(s["student_id"])
             pool = focus_pool.setdefault(
-                g["skill_id"], {**{k: g[k] for k in ("skill_id", "code", "name", "domain")}, "students": set(),
-                                "unblocks": 0, "editions": []},
+                g["skill_id"],
+                {
+                    **{k: g[k] for k in ("skill_id", "code", "name", "domain")},
+                    "students": set(),
+                    "unblocked": set(),
+                    "editions": [],
+                },
             )
             pool["students"].update(s["student_id"] for s in g["students"])
-            pool["unblocks"] += g["unblocks"]
+            # A student counts once, however many competitions closing the gap would unlock.
+            pool["unblocked"].update(s["student_id"] for s in g["students"] if s["would_unblock"])
             pool["editions"].append(ed.name)
         clusters = readiness_clusters(rs, threshold)
         for c in clusters:
@@ -275,21 +313,25 @@ async def squad_readiness(
                 "edition_id": ed.id,
                 "edition_name": ed.name,
                 "event_starts": ed.event_starts,
-                "ready_count": sum(1 for r in rs if r.score is not None and r.score >= threshold),
+                "ready_count": sum(1 for r in rs if r.is_ready(threshold)),
                 "member_count": len(rs),
-                "students": sorted(
-                    (
-                        {"student_id": r.student_id, "name": names.get(r.student_id), "percent": r.percent,
-                         "gap_count": len(r.gaps), "gap_codes": [g.requirement.code for g in r.gaps]}
-                        for r in rs
-                    ),
-                    key=lambda x: -(x["percent"] or 0),
-                ),
+                "students": [
+                    {
+                        "student_id": r.student_id,
+                        "name": names.get(r.student_id),
+                        "percent": r.percent,
+                        "gap_count": len(r.gaps),
+                        "gap_codes": [g.requirement.code for g in r.gaps],
+                    }
+                    for r in sorted(rs, key=lambda r: -(r.percent or 0))
+                ],
                 "shared_gaps": gaps,
                 "clusters": clusters,
             }
         )
 
+    for f in focus_pool.values():
+        f["unblocks"] = len(f["unblocked"])
     focus = sorted(focus_pool.values(), key=lambda f: (-f["unblocks"], -len(f["students"]), f["code"]))[:3]
     suggestions = []
     for f in focus:
@@ -307,8 +349,8 @@ async def squad_readiness(
                     + f" for {', '.join(dict.fromkeys(f['editions']))}."
                 ),
                 "reason_ar": (
-                    f"ركّز على {f['code']}: {n} من أصل {len(student_ids)} طلاب لديهم فجوة فيها"
-                    + (f"، وسدّها سيجعل {f['unblocks']} منهم جاهزين" if f["unblocks"] else "")
+                    f"التركيز على {f['code']}: الفجوة موجودة لدى {n} من أصل {len(student_ids)} من الطلاب"
+                    + (f"، وسدّها يُكمل جاهزية {f['unblocks']} منهم" if f["unblocks"] else "")
                     + "."
                 ),
                 "claim_type": "inferred",

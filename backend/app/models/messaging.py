@@ -70,7 +70,9 @@ class ConsentRequest(TenantScoped, Base):
     edition_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("competition_editions.id", ondelete="SET NULL")
     )
-    status: Mapped[ConsentRequestStatus] = enum_column(ConsentRequestStatus, default=ConsentRequestStatus.PENDING)
+    status: Mapped[ConsentRequestStatus] = enum_column(
+        ConsentRequestStatus, default=ConsentRequestStatus.PENDING
+    )
     responded_at: Mapped[datetime | None]
     consent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("consents.id", ondelete="SET NULL"))
 

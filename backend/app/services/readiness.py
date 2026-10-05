@@ -122,6 +122,9 @@ class ReadinessResult:
             return None
         return int((self.score * 100).quantize(Decimal("1"), rounding=ROUND_HALF_UP))
 
+    def is_ready(self, threshold: Decimal) -> bool:
+        return self.score is not None and self.score >= threshold
+
     def as_dict(self) -> dict:
         return {
             "student_id": self.student_id,
@@ -153,7 +156,9 @@ def compute_readiness(
         ratio = Decimal(level) / Decimal(req.required_level)
         contribution = req.weight * min(ratio, Decimal(1))
         result.lines.append(
-            ReadinessLine(requirement=req, earned_level=level, evidence=ev, ratio=ratio, contribution=contribution)
+            ReadinessLine(
+                requirement=req, earned_level=level, evidence=ev, ratio=ratio, contribution=contribution
+            )
         )
         total_w += req.weight
         total += contribution
@@ -292,8 +297,6 @@ def readiness_clusters(results: list[ReadinessResult], threshold: Decimal) -> li
         if res.score is None or res.score >= threshold:
             continue
         key = tuple(sorted(line.requirement.code for line in res.gaps))
-        c = clusters.setdefault(
-            key, {"missing_codes": list(key), "skills_away": len(key), "student_ids": []}
-        )
+        c = clusters.setdefault(key, {"missing_codes": list(key), "skills_away": len(key), "student_ids": []})
         c["student_ids"].append(res.student_id)
     return sorted(clusters.values(), key=lambda c: (c["skills_away"], -len(c["student_ids"])))

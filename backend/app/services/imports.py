@@ -23,14 +23,33 @@ from app.models import Guardian, ImportBatch, Student, StudentGuardian
 from app.models.enums import Channel, EnrolmentStatus, ImportStatus, Language
 from app.security import blind_index, decrypt_field, encrypt_field
 
-STUDENT_FIELDS = ["external_mis_id", "given_name", "family_name", "preferred_name", "full_name_ar", "date_of_birth",
-                  "gender", "year_group", "house", "enrolled_on"]
+STUDENT_FIELDS = [
+    "external_mis_id",
+    "given_name",
+    "family_name",
+    "preferred_name",
+    "full_name_ar",
+    "date_of_birth",
+    "gender",
+    "year_group",
+    "house",
+    "enrolled_on",
+]
 GUARDIAN_FIELDS = ["external_id", "name", "email", "phone", "whatsapp", "relationship", "language", "channel"]
 REQUIRED = ["external_mis_id", "given_name", "family_name", "year_group"]
 
 # Header synonyms used by common MIS exports (iSAMS, Engage, PowerSchool, Veracross).
 SYNONYMS = {
-    "external_mis_id": ["external_mis_id", "mis id", "pupil id", "student id", "school id", "upn", "id", "student number"],
+    "external_mis_id": [
+        "external_mis_id",
+        "mis id",
+        "pupil id",
+        "student id",
+        "school id",
+        "upn",
+        "id",
+        "student number",
+    ],
     "given_name": ["given_name", "forename", "first name", "firstname", "legal first name"],
     "family_name": ["family_name", "surname", "last name", "lastname"],
     "preferred_name": ["preferred_name", "preferred name", "known as", "nickname"],
@@ -52,7 +71,9 @@ for i in (1, 2):
         "language": ["language"],
         "channel": ["channel", "preferred channel"],
     }.items():
-        SYNONYMS[f"guardian{i}_{f}"] = [f"guardian{i}_{f}"] + [f"contact {i} {s}" for s in syn] + [f"parent {i} {s}" for s in syn]
+        SYNONYMS[f"guardian{i}_{f}"] = (
+            [f"guardian{i}_{f}"] + [f"contact {i} {s}" for s in syn] + [f"parent {i} {s}" for s in syn]
+        )
 
 ALL_TARGETS = STUDENT_FIELDS + [f"guardian{i}_{f}" for i in (1, 2) for f in GUARDIAN_FIELDS]
 
@@ -95,11 +116,15 @@ def _year(v: str) -> int:
 def parse(content: bytes, mapping: dict[str, str]) -> tuple[list[dict], list[dict], list[str]]:
     text = content.decode("utf-8-sig")
     reader = csv.DictReader(io.StringIO(text))
-    headers = reader.fieldnames or []
+    headers = list(reader.fieldnames or [])
     mapping = {**suggest_mapping(headers), **{k: v for k, v in mapping.items() if v}}
     missing = [f for f in REQUIRED if f not in mapping]
     if missing:
-        return [], [{"row": 0, "errors": [f"No column mapped for required field '{f}'" for f in missing]}], headers
+        return (
+            [],
+            [{"row": 0, "errors": [f"No column mapped for required field '{f}'" for f in missing]}],
+            headers,
+        )
     rows, errors, seen = [], [], set()
     for n, raw in enumerate(reader, start=2):
         rec: dict[str, Any] = {t: (raw.get(col) or "").strip() for t, col in mapping.items()}
@@ -119,7 +144,9 @@ def parse(content: bytes, mapping: dict[str, str]) -> tuple[list[dict], list[dic
             e = rec.get(f"guardian{i}_email")
             if e:
                 try:
-                    rec[f"guardian{i}_email"] = validate_email(e, check_deliverability=False).normalized.lower()
+                    rec[f"guardian{i}_email"] = validate_email(
+                        e, check_deliverability=False
+                    ).normalized.lower()
                 except EmailNotValidError:
                     errs.append(f"guardian{i}_email '{e}' is not a valid email")
             lang = (rec.get(f"guardian{i}_language") or "").lower()
@@ -160,8 +187,13 @@ async def compute_diff(session: AsyncSession, rows: list[dict], mark_missing_as_
     for rec in rows:
         s = existing.get(rec["external_mis_id"])
         if s is None:
-            creates.append({"external_mis_id": rec["external_mis_id"],
-                            "name": f"{rec.get('given_name')} {rec.get('family_name')}", "year_group": rec.get("year_group")})
+            creates.append(
+                {
+                    "external_mis_id": rec["external_mis_id"],
+                    "name": f"{rec.get('given_name')} {rec.get('family_name')}",
+                    "year_group": rec.get("year_group"),
+                }
+            )
         else:
             changes = {}
             for f in STUDENT_FIELDS[1:]:
@@ -174,23 +206,40 @@ async def compute_diff(session: AsyncSession, rows: list[dict], mark_missing_as_
             if s.enrolment_status == EnrolmentStatus.LEFT:
                 changes["enrolment_status"] = {"from": "left", "to": "active"}
             if changes:
-                updates.append({"external_mis_id": s.external_mis_id, "student_id": str(s.id), "changes": changes})
+                updates.append(
+                    {"external_mis_id": s.external_mis_id, "student_id": str(s.id), "changes": changes}
+                )
             else:
                 unchanged += 1
         for i in (1, 2):
             if rec.get(f"guardian{i}_name"):
                 g = await _guardian_for(session, rec, i, cache)
-                if g is None or g.full_name != rec[f"guardian{i}_name"] or (
-                    rec.get(f"guardian{i}_email") and decrypt_field(g.email_enc) != rec[f"guardian{i}_email"]):
+                if (
+                    g is None
+                    or g.full_name != rec[f"guardian{i}_name"]
+                    or (
+                        rec.get(f"guardian{i}_email")
+                        and decrypt_field(g.email_enc) != rec[f"guardian{i}_email"]
+                    )
+                ):
                     guardian_changes += 1
     in_file = {r["external_mis_id"] for r in rows}
-    leavers = [
-        {"external_mis_id": s.external_mis_id, "student_id": str(s.id), "name": s.display_name}
-        for s in existing.values()
-        if s.enrolment_status == EnrolmentStatus.ACTIVE and s.external_mis_id not in in_file
-    ] if mark_missing_as_left else []
-    return {"creates": creates, "updates": updates, "unchanged": unchanged, "leavers": leavers,
-            "guardian_changes": guardian_changes}
+    leavers = (
+        [
+            {"external_mis_id": s.external_mis_id, "student_id": str(s.id), "name": s.display_name}
+            for s in existing.values()
+            if s.enrolment_status == EnrolmentStatus.ACTIVE and s.external_mis_id not in in_file
+        ]
+        if mark_missing_as_left
+        else []
+    )
+    return {
+        "creates": creates,
+        "updates": updates,
+        "unchanged": unchanged,
+        "leavers": leavers,
+        "guardian_changes": guardian_changes,
+    }
 
 
 def content_hash(content: bytes, mapping: dict, options: dict) -> str:
@@ -202,24 +251,43 @@ def content_hash(content: bytes, mapping: dict, options: dict) -> str:
 def _diff_signature(diff: dict) -> str:
     sig = {
         "c": sorted(c["external_mis_id"] for c in diff["creates"]),
-        "u": sorted((u["external_mis_id"], json.dumps(u["changes"], sort_keys=True)) for u in diff["updates"]),
+        "u": sorted(
+            (u["external_mis_id"], json.dumps(u["changes"], sort_keys=True)) for u in diff["updates"]
+        ),
         "l": sorted(x["external_mis_id"] for x in diff["leavers"]),
     }
     return hashlib.sha256(json.dumps(sig, sort_keys=True).encode()).hexdigest()
 
 
-async def dry_run(session: AsyncSession, *, content: bytes, filename: str | None, mapping: dict, source: str,
-                  mark_missing_as_left: bool, user_id: uuid.UUID | None) -> ImportBatch:
+async def dry_run(
+    session: AsyncSession,
+    *,
+    content: bytes,
+    filename: str | None,
+    mapping: dict,
+    source: str,
+    mark_missing_as_left: bool,
+    user_id: uuid.UUID | None,
+) -> ImportBatch:
     options = {"mark_missing_as_left": mark_missing_as_left}
     rows, errors, headers = parse(content, mapping)
     diff = await compute_diff(session, rows, mark_missing_as_left)
     batch = ImportBatch(
-        source=source, filename=filename, content_hash=content_hash(content, mapping, options),
+        source=source,
+        filename=filename,
+        content_hash=content_hash(content, mapping, options),
         mapping={"columns": {**suggest_mapping(headers), **mapping}, "headers": headers, "options": options},
         status=ImportStatus.PREVIEWED,
-        summary={"rows": len(rows) + len(errors), "valid": len(rows), "errors": len(errors), "creates": len(diff["creates"]),
-                 "updates": len(diff["updates"]), "unchanged": diff["unchanged"], "leavers": len(diff["leavers"]),
-                 "guardian_changes": diff["guardian_changes"]},
+        summary={
+            "rows": len(rows) + len(errors),
+            "valid": len(rows),
+            "errors": len(errors),
+            "creates": len(diff["creates"]),
+            "updates": len(diff["updates"]),
+            "unchanged": diff["unchanged"],
+            "leavers": len(diff["leavers"]),
+            "guardian_changes": diff["guardian_changes"],
+        },
         diff={**diff, "errors": errors, "signature": _diff_signature(diff)},
         rows={"rows": rows},
         created_by_id=user_id,
@@ -249,8 +317,12 @@ async def commit(session: AsyncSession, batch: ImportBatch, user_id: uuid.UUID |
     for rec in rows:
         s = existing.get(rec["external_mis_id"])
         if s is None:
-            s = Student(external_mis_id=rec["external_mis_id"], given_name=rec["given_name"],
-                        family_name=rec["family_name"], year_group=rec["year_group"])
+            s = Student(
+                external_mis_id=rec["external_mis_id"],
+                given_name=rec["given_name"],
+                family_name=rec["family_name"],
+                year_group=rec["year_group"],
+            )
             session.add(s)
             existing[s.external_mis_id] = s
         for f in STUDENT_FIELDS[1:]:
@@ -258,19 +330,28 @@ async def commit(session: AsyncSession, batch: ImportBatch, user_id: uuid.UUID |
                 setattr(s, f, date.fromisoformat(rec[f]) if f in ("date_of_birth", "enrolled_on") else rec[f])
         s.enrolment_status, s.left_on, s.mis_synced_at = EnrolmentStatus.ACTIVE, None, now
         await session.flush()
-        links = {link.guardian_id for link in (await session.scalars(
-            select(StudentGuardian).where(StudentGuardian.student_id == s.id))).all()}
+        links = {
+            link.guardian_id
+            for link in (
+                await session.scalars(select(StudentGuardian).where(StudentGuardian.student_id == s.id))
+            ).all()
+        }
         for i in (1, 2):
             if not rec.get(f"guardian{i}_name"):
                 continue
             g = await _guardian_for(session, rec, i, cache)
             if g is None:
-                g = Guardian(full_name=rec[f"guardian{i}_name"], external_mis_id=rec.get(f"guardian{i}_external_id"))
+                g = Guardian(
+                    full_name=rec[f"guardian{i}_name"], external_mis_id=rec.get(f"guardian{i}_external_id")
+                )
                 session.add(g)
                 cache[rec.get(f"guardian{i}_external_id") or rec.get(f"guardian{i}_email")] = g
             g.full_name = rec[f"guardian{i}_name"]
             if rec.get(f"guardian{i}_email"):
-                g.email_enc, g.email_hash = encrypt_field(rec[f"guardian{i}_email"]), blind_index(rec[f"guardian{i}_email"])
+                g.email_enc, g.email_hash = (
+                    encrypt_field(rec[f"guardian{i}_email"]),
+                    blind_index(rec[f"guardian{i}_email"]),
+                )
             if rec.get(f"guardian{i}_phone"):
                 g.phone_enc = encrypt_field(rec[f"guardian{i}_phone"])
             if rec.get(f"guardian{i}_whatsapp"):
@@ -280,9 +361,14 @@ async def commit(session: AsyncSession, batch: ImportBatch, user_id: uuid.UUID |
                 g.preferred_channel = Channel(rec[f"guardian{i}_channel"])
             await session.flush()
             if g.id not in links:
-                session.add(StudentGuardian(student_id=s.id, guardian_id=g.id,
-                                            relationship_label=rec.get(f"guardian{i}_relationship") or "parent",
-                                            is_primary_contact=i == 1))
+                session.add(
+                    StudentGuardian(
+                        student_id=s.id,
+                        guardian_id=g.id,
+                        relationship_label=rec.get(f"guardian{i}_relationship") or "parent",
+                        is_primary_contact=i == 1,
+                    )
+                )
                 links.add(g.id)
     for leaver in current["leavers"]:
         s = existing.get(leaver["external_mis_id"])

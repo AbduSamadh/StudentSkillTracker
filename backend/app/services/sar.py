@@ -46,8 +46,12 @@ record the platform holds about this student. Machine-readable copies are in the
 def _rows(objs) -> list[dict]:  # noqa: ANN001
     out = []
     for o in objs:
-        d = {c.key: getattr(o, c.key) for c in o.__table__.columns
-             if c.key not in ("tenant_id", "email_enc", "phone_enc", "whatsapp_enc", "email_hash", "open_token")}
+        d = {
+            c.key: getattr(o, c.key)
+            for c in o.__table__.columns
+            if c.key
+            not in ("tenant_id", "email_enc", "phone_enc", "whatsapp_enc", "email_hash", "open_token")
+        }
         out.append(_jsonable(d))
     return out
 
@@ -60,9 +64,15 @@ async def build_sar_bundle(ctx, s: Student) -> tuple[bytes, str]:  # noqa: ANN00
     for link in links:
         g = await q.get(Guardian, link.guardian_id)
         if g:
-            guardians.append({**_rows([g])[0], "relationship": link.relationship_label,
-                              "email": decrypt_field(g.email_enc), "phone": decrypt_field(g.phone_enc),
-                              "whatsapp": decrypt_field(g.whatsapp_enc)})
+            guardians.append(
+                {
+                    **_rows([g])[0],
+                    "relationship": link.relationship_label,
+                    "email": decrypt_field(g.email_enc),
+                    "phone": decrypt_field(g.phone_enc),
+                    "whatsapp": decrypt_field(g.whatsapp_enc),
+                }
+            )
     sections["guardians"] = guardians
     for name, model, col in (
         ("squad_memberships", SquadMembership, SquadMembership.student_id),
@@ -75,20 +85,47 @@ async def build_sar_bundle(ctx, s: Student) -> tuple[bytes, str]:  # noqa: ANN00
         ("consent_requests", ConsentRequest, ConsentRequest.student_id),
     ):
         sections[name] = _rows((await q.scalars(select(model).where(col == s.id))).all())
-    sections["results"] = _rows((await q.scalars(select(Result).join(
-        ResultParticipant, ResultParticipant.result_id == Result.id).where(ResultParticipant.student_id == s.id))).all())
-    sections["messages_received_by_family"] = _rows((await q.scalars(select(MessageDelivery).where(
-        MessageDelivery.student_ids.any(s.id)))).all())
-    sections["media_tagged"] = _rows((await q.scalars(select(MediaAsset).join(
-        MediaSubject, MediaSubject.media_id == MediaAsset.id).where(MediaSubject.student_id == s.id))).all())
-    sections["access_log"] = _rows((await q.scalars(select(AuditEvent).where(or_(
-        AuditEvent.subject_id == s.id)).order_by(AuditEvent.created_at))).all())
+    sections["results"] = _rows(
+        (
+            await q.scalars(
+                select(Result)
+                .join(ResultParticipant, ResultParticipant.result_id == Result.id)
+                .where(ResultParticipant.student_id == s.id)
+            )
+        ).all()
+    )
+    sections["messages_received_by_family"] = _rows(
+        (await q.scalars(select(MessageDelivery).where(MessageDelivery.student_ids.contains([s.id])))).all()
+    )
+    sections["media_tagged"] = _rows(
+        (
+            await q.scalars(
+                select(MediaAsset)
+                .join(MediaSubject, MediaSubject.media_id == MediaAsset.id)
+                .where(MediaSubject.student_id == s.id)
+            )
+        ).all()
+    )
+    sections["access_log"] = _rows(
+        (
+            await q.scalars(
+                select(AuditEvent).where(or_(AuditEvent.subject_id == s.id)).order_by(AuditEvent.created_at)
+            )
+        ).all()
+    )
 
     counts = {k: len(v) for k, v in sections.items()}
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
         for k, v in sections.items():
             z.writestr(f"{k}.json", json.dumps(v, ensure_ascii=False, indent=1))
-        z.writestr("summary.html", SUMMARY.render(s={"name": s.display_name}, counts=counts, school=ctx.tenant.name,
-                                                  generated=datetime.now(UTC).strftime("%d %b %Y %H:%M UTC")))
+        z.writestr(
+            "summary.html",
+            SUMMARY.render(
+                s={"name": s.display_name},
+                counts=counts,
+                school=ctx.tenant.name,
+                generated=datetime.now(UTC).strftime("%d %b %Y %H:%M UTC"),
+            ),
+        )
     return buf.getvalue(), f"subject-access-{s.external_mis_id}-{datetime.now(UTC):%Y%m%d}.zip"

@@ -20,8 +20,12 @@ from app.security import split_opaque_token
 
 router = APIRouter(tags=["inbound"])
 
-WA_STATUS = {"sent": DeliveryStatus.SENT, "delivered": DeliveryStatus.DELIVERED, "read": DeliveryStatus.READ,
-             "failed": DeliveryStatus.FAILED}
+WA_STATUS = {
+    "sent": DeliveryStatus.SENT,
+    "delivered": DeliveryStatus.DELIVERED,
+    "read": DeliveryStatus.READ,
+    "failed": DeliveryStatus.FAILED,
+}
 RANK = {DeliveryStatus.SENT: 1, DeliveryStatus.DELIVERED: 2, DeliveryStatus.READ: 3}
 
 
@@ -33,16 +37,21 @@ def _parse_callback(value: str | None) -> tuple[uuid.UUID, uuid.UUID] | None:
         return None
 
 
-async def _apply_status(tenant_id: uuid.UUID, delivery_id: uuid.UUID, new: DeliveryStatus, at: datetime,
-                        error: str | None = None) -> None:
+async def _apply_status(
+    tenant_id: uuid.UUID, delivery_id: uuid.UUID, new: DeliveryStatus, at: datetime, error: str | None = None
+) -> None:
     async with tenant_session(tenant_id) as session:
         d = await session.get(MessageDelivery, delivery_id)
         if d is None:
             return
         if new == DeliveryStatus.FAILED:
             # A failed WhatsApp send is retried through the fallback chain by the dispatcher.
-            d.status, d.error = DeliveryStatus.PENDING if d.channel_used and d.channel_used.value == "whatsapp" \
-                else DeliveryStatus.FAILED, error
+            d.status, d.error = (
+                DeliveryStatus.PENDING
+                if d.channel_used and d.channel_used.value == "whatsapp"
+                else DeliveryStatus.FAILED,
+                error,
+            )
         elif RANK.get(new, 0) > RANK.get(d.status, 0):
             d.status = new
             if new == DeliveryStatus.DELIVERED:
@@ -55,7 +64,8 @@ async def _apply_status(tenant_id: uuid.UUID, delivery_id: uuid.UUID, new: Deliv
 
 @router.get("/webhooks/whatsapp")
 async def whatsapp_verify(
-    mode: str = Query(alias="hub.mode"), token: str = Query(alias="hub.verify_token"),
+    mode: str = Query(alias="hub.mode"),
+    token: str = Query(alias="hub.verify_token"),
     challenge: str = Query(alias="hub.challenge"),
 ) -> Response:
     if mode == "subscribe" and hmac.compare_digest(token, get_settings().whatsapp_verify_token):
@@ -119,25 +129,50 @@ async def squad_calendar(token: str) -> Response:
         squad = await session.scalar(select(Squad).where(Squad.ics_token == raw))
         if squad is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND)
-        editions = (await session.scalars(
-            select(CompetitionEdition).join(SquadTargetEdition, SquadTargetEdition.edition_id == CompetitionEdition.id)
-            .where(SquadTargetEdition.squad_id == squad.id))).all()
-        sessions = (await session.scalars(select(TrainingSession).where(
-            TrainingSession.squad_id == squad.id,
-            TrainingSession.starts_at >= datetime.now(UTC) - timedelta(days=30)))).all()
+        editions = (
+            await session.scalars(
+                select(CompetitionEdition)
+                .join(SquadTargetEdition, SquadTargetEdition.edition_id == CompetitionEdition.id)
+                .where(SquadTargetEdition.squad_id == squad.id)
+            )
+        ).all()
+        sessions = (
+            await session.scalars(
+                select(TrainingSession).where(
+                    TrainingSession.squad_id == squad.id,
+                    TrainingSession.starts_at >= datetime.now(UTC) - timedelta(days=30),
+                )
+            )
+        ).all()
     stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
-    lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//stemtrack//squad calendar//EN",
-             f"X-WR-CALNAME:{_ics_escape(squad.name)}"]
+    lines = [
+        "BEGIN:VCALENDAR",
+        "VERSION:2.0",
+        "PRODID:-//stemtrack//squad calendar//EN",
+        f"X-WR-CALNAME:{_ics_escape(squad.name)}",
+    ]
     for e in editions:
-        lines += ["BEGIN:VEVENT", f"UID:edition-{e.id}@stemtrack", f"DTSTAMP:{stamp}",
-                  f"DTSTART;VALUE=DATE:{e.event_starts:%Y%m%d}",
-                  f"DTEND;VALUE=DATE:{(e.event_ends + timedelta(days=1)):%Y%m%d}",
-                  f"SUMMARY:{_ics_escape(e.name)}", f"LOCATION:{_ics_escape(e.venue or '')}", "END:VEVENT"]
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:edition-{e.id}@stemtrack",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART;VALUE=DATE:{e.event_starts:%Y%m%d}",
+            f"DTEND;VALUE=DATE:{(e.event_ends + timedelta(days=1)):%Y%m%d}",
+            f"SUMMARY:{_ics_escape(e.name)}",
+            f"LOCATION:{_ics_escape(e.venue or '')}",
+            "END:VEVENT",
+        ]
     for s in sessions:
         end = s.ends_at or s.starts_at + timedelta(hours=1)
-        lines += ["BEGIN:VEVENT", f"UID:session-{s.id}@stemtrack", f"DTSTAMP:{stamp}",
-                  f"DTSTART:{s.starts_at.astimezone(UTC):%Y%m%dT%H%M%SZ}", f"DTEND:{end.astimezone(UTC):%Y%m%dT%H%M%SZ}",
-                  f"SUMMARY:{_ics_escape('Training: ' + squad.name)}", f"LOCATION:{_ics_escape(s.location or '')}",
-                  "END:VEVENT"]
+        lines += [
+            "BEGIN:VEVENT",
+            f"UID:session-{s.id}@stemtrack",
+            f"DTSTAMP:{stamp}",
+            f"DTSTART:{s.starts_at.astimezone(UTC):%Y%m%dT%H%M%SZ}",
+            f"DTEND:{end.astimezone(UTC):%Y%m%dT%H%M%SZ}",
+            f"SUMMARY:{_ics_escape('Training: ' + squad.name)}",
+            f"LOCATION:{_ics_escape(s.location or '')}",
+            "END:VEVENT",
+        ]
     lines.append("END:VCALENDAR")
     return Response("\r\n".join(lines) + "\r\n", media_type="text/calendar")

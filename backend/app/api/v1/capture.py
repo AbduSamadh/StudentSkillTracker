@@ -126,11 +126,16 @@ async def get_session(session_id: uuid.UUID, ctx: CtxDep) -> dict:
     ctx.require(Cap.VIEW_ROSTER)
     s = await _session(ctx, session_id)
     rows = (await ctx.session.scalars(select(Attendance).where(Attendance.session_id == s.id))).all()
-    return {**SessionOut.model_validate(s).model_dump(), "attendance": [AttendanceOut.model_validate(a) for a in rows]}
+    return {
+        **SessionOut.model_validate(s).model_dump(),
+        "attendance": [AttendanceOut.model_validate(a) for a in rows],
+    }
 
 
 @router.post("/sessions/{session_id}/attendance", response_model=list[AttendanceOut])
-async def record_attendance(session_id: uuid.UUID, body: AttendanceIn, ctx: CtxDep, response: Response) -> list[AttendanceOut]:
+async def record_attendance(
+    session_id: uuid.UUID, body: AttendanceIn, ctx: CtxDep, response: Response
+) -> list[AttendanceOut]:
     """Idempotent upsert per (session, student); safe to replay from the offline queue."""
     s = await _session(ctx, session_id)
     ensure_can_write_squad(ctx.principal, s.squad_id, Cap.RECORD_ATTENDANCE)
@@ -143,7 +148,9 @@ async def record_attendance(session_id: uuid.UUID, body: AttendanceIn, ctx: CtxD
     )
     unknown = [r.student_id for r in body.records if r.student_id not in members]
     if unknown:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, f"Not in this squad: {[str(u) for u in unknown]}")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, f"Not in this squad: {[str(u) for u in unknown]}"
+        )
     existing = {
         a.student_id: a
         for a in (await ctx.session.scalars(select(Attendance).where(Attendance.session_id == s.id))).all()
@@ -152,18 +159,31 @@ async def record_attendance(session_id: uuid.UUID, body: AttendanceIn, ctx: CtxD
     for rec in body.records:
         a = existing.get(rec.student_id)
         if a is None:
-            a = Attendance(session_id=s.id, student_id=rec.student_id, status=rec.status, note=rec.note,
-                           recorded_by_id=ctx.user_id, client_modified_at=rec.client_modified_at)
+            a = Attendance(
+                session_id=s.id,
+                student_id=rec.student_id,
+                status=rec.status,
+                note=rec.note,
+                recorded_by_id=ctx.user_id,
+                client_modified_at=rec.client_modified_at,
+            )
             ctx.session.add(a)
             existing[rec.student_id] = a
         elif _is_newer(rec.client_modified_at, a.client_modified_at):
-            a.status, a.note, a.client_modified_at, a.recorded_by_id = rec.status, rec.note, rec.client_modified_at, ctx.user_id
+            a.status, a.note, a.client_modified_at, a.recorded_by_id = (
+                rec.status,
+                rec.note,
+                rec.client_modified_at,
+                ctx.user_id,
+            )
         else:
             stale += 1
     if stale:
         response.headers["X-Sync-Conflict"] = f"stale:{stale}"
     await ctx.session.flush()
-    ctx.audit("attendance.record", "squad", s.squad_id, context={"session_id": s.id, "count": len(body.records)})
+    ctx.audit(
+        "attendance.record", "squad", s.squad_id, context={"session_id": s.id, "count": len(body.records)}
+    )
     return [AttendanceOut.model_validate(a) for a in existing.values()]
 
 
@@ -174,7 +194,9 @@ async def _result_out(ctx, r: Result) -> ResultOut:  # noqa: ANN001
     out.proposed_award_count = len(
         (
             await ctx.session.scalars(
-                select(SkillAward.id).where(SkillAward.result_id == r.id, SkillAward.status == AwardStatus.PROPOSED)
+                select(SkillAward.id).where(
+                    SkillAward.result_id == r.id, SkillAward.status == AwardStatus.PROPOSED
+                )
             )
         ).all()
     )
@@ -198,7 +220,9 @@ async def _check_result_scope(ctx, r: Result) -> None:  # noqa: ANN001
 
 
 @router.get("/results", response_model=list[ResultOut])
-async def list_results(ctx: CtxDep, edition_id: uuid.UUID | None = None, squad_id: uuid.UUID | None = None) -> list[ResultOut]:
+async def list_results(
+    ctx: CtxDep, edition_id: uuid.UUID | None = None, squad_id: uuid.UUID | None = None
+) -> list[ResultOut]:
     ctx.require(Cap.VIEW_ROSTER)
     stmt = select(Result).order_by(Result.created_at.desc())
     if edition_id:
@@ -211,8 +235,11 @@ async def list_results(ctx: CtxDep, edition_id: uuid.UUID | None = None, squad_i
         stmt = stmt.where(
             or_(
                 Result.squad_id.in_(ctx.principal.coached_squad_ids or {uuid.UUID(int=0)}),
-                Result.id.in_(select(ResultParticipant.result_id).where(
-                    ResultParticipant.student_id.in_(scope or {uuid.UUID(int=0)}))),
+                Result.id.in_(
+                    select(ResultParticipant.result_id).where(
+                        ResultParticipant.student_id.in_(scope or {uuid.UUID(int=0)})
+                    )
+                ),
             )
         )
     return [await _result_out(ctx, r) for r in (await ctx.session.scalars(stmt.limit(300))).all()]
@@ -222,7 +249,9 @@ async def list_results(ctx: CtxDep, edition_id: uuid.UUID | None = None, squad_i
 async def record_result(body: ResultIn, ctx: CtxDep, response: Response) -> ResultOut:
     ctx.require(Cap.RECORD_RESULTS)
     if body.idempotency_key:
-        existing = await ctx.session.scalar(select(Result).where(Result.idempotency_key == body.idempotency_key))
+        existing = await ctx.session.scalar(
+            select(Result).where(Result.idempotency_key == body.idempotency_key)
+        )
         if existing is not None:
             await _check_result_scope(ctx, existing)
             response.status_code = 200
@@ -243,7 +272,11 @@ async def record_result(body: ResultIn, ctx: CtxDep, response: Response) -> Resu
     if body.squad_id:
         memberships = {
             m.student_id: m.id
-            for m in (await ctx.session.scalars(select(SquadMembership).where(SquadMembership.squad_id == body.squad_id))).all()
+            for m in (
+                await ctx.session.scalars(
+                    select(SquadMembership).where(SquadMembership.squad_id == body.squad_id)
+                )
+            ).all()
         }
     r = Result(
         id=body.id or uuid.uuid4(),
@@ -251,19 +284,36 @@ async def record_result(body: ResultIn, ctx: CtxDep, response: Response) -> Resu
         **body.model_dump(exclude={"id", "participant_ids", "rubric_scores"}),
         rubric_scores={k: float(v) for k, v in body.rubric_scores.items()},
     )
-    r.participants = [ResultParticipant(student_id=sid, membership_id=memberships.get(sid)) for sid in body.participant_ids]
+    r.participants = [
+        ResultParticipant(student_id=sid, membership_id=memberships.get(sid)) for sid in body.participant_ids
+    ]
     await _apply_index(ctx, r, edition)
     ctx.session.add(r)
     await ctx.session.flush()
     proposed = await propose_from_rubric(ctx.session, r, edition)
-    await emit(ctx.session, WebhookEvent.RESULT_RECORDED, {
-        "result_id": r.id, "edition_id": edition.id, "participant_ids": body.participant_ids,
-        "placement": r.placement, "field_size": r.field_size,
-        "performance_index": float(r.performance_index) if r.performance_index is not None else None,
-    })
+    await emit(
+        ctx.session,
+        WebhookEvent.RESULT_RECORDED,
+        {
+            "result_id": r.id,
+            "edition_id": edition.id,
+            "participant_ids": body.participant_ids,
+            "placement": r.placement,
+            "field_size": r.field_size,
+            "performance_index": float(r.performance_index) if r.performance_index is not None else None,
+        },
+    )
     ctx.defer("deliver_webhooks")
-    ctx.audit("result.record", "edition", edition.id, context={"result_id": r.id, "proposed_awards": len(proposed),
-                                                               "data_quality_flags": r.data_quality_flags})
+    ctx.audit(
+        "result.record",
+        "edition",
+        edition.id,
+        context={
+            "result_id": r.id,
+            "proposed_awards": len(proposed),
+            "data_quality_flags": r.data_quality_flags,
+        },
+    )
     return await _result_out(ctx, r)
 
 
@@ -282,7 +332,9 @@ async def get_result(result_id: uuid.UUID, ctx: CtxDep) -> ResultOut:
 
 
 @router.patch("/results/{result_id}", response_model=ResultOut)
-async def update_result(result_id: uuid.UUID, body: ResultPatch, ctx: CtxDep, response: Response) -> ResultOut:
+async def update_result(
+    result_id: uuid.UUID, body: ResultPatch, ctx: CtxDep, response: Response
+) -> ResultOut:
     ctx.require(Cap.RECORD_RESULTS)
     r = await _result(ctx, result_id)
     if r.squad_id and Role.PROGRAMME_ADMIN not in ctx.principal.roles:
@@ -310,10 +362,17 @@ async def update_result(result_id: uuid.UUID, body: ResultPatch, ctx: CtxDep, re
     await ctx.session.flush()
     await propose_from_rubric(ctx.session, r, edition)
     if r.released_at is not None:
-        ctx.audit("result.admin_override", "edition", r.edition_id, reason=body.override_reason,
-                  context={"result_id": r.id, "before": before, "after": changes})
+        ctx.audit(
+            "result.admin_override",
+            "edition",
+            r.edition_id,
+            reason=body.override_reason,
+            context={"result_id": r.id, "before": before, "after": changes},
+        )
     else:
-        ctx.audit("result.update", "edition", r.edition_id, context={"result_id": r.id, "changes": list(changes)})
+        ctx.audit(
+            "result.update", "edition", r.edition_id, context={"result_id": r.id, "changes": list(changes)}
+        )
     return await _result_out(ctx, r)
 
 

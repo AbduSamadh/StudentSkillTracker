@@ -1,10 +1,10 @@
 """Operator CLI.
 
-    python -m app.cli provision-tenant --slug my-school --name "My School" [--name-ar ...]
-    python -m app.cli create-user --tenant my-school --email head@school.ae --name "Head" --role leader
-    python -m app.cli seed-demo
-    python -m app.cli totp --secret BASE32SECRET
-    python -m app.cli purge --tenant my-school
+python -m app.cli provision-tenant --slug my-school --name "My School" [--name-ar ...]
+python -m app.cli create-user --tenant my-school --email head@school.ae --name "Head" --role leader
+python -m app.cli seed-demo
+python -m app.cli totp --secret BASE32SECRET
+python -m app.cli purge --tenant my-school
 """
 
 import argparse
@@ -13,7 +13,7 @@ import getpass
 import uuid
 
 import pyotp
-from sqlalchemy import select
+from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.config import get_settings
@@ -36,8 +36,11 @@ async def provision_tenant(slug: str, name: str, name_ar: str | None = None) -> 
         engine = create_async_engine(get_settings().migration_database_url)
         async with engine.begin() as conn:
             await conn.execute(
-                Tenant.__table__.insert().values(
-                    id=tid, slug=slug, name=name, name_ar=name_ar,
+                insert(Tenant).values(
+                    id=tid,
+                    slug=slug,
+                    name=name,
+                    name_ar=name_ar,
                     settings=TenantSettings().model_dump(mode="json"),
                 )
             )

@@ -119,7 +119,10 @@ async def evaluate_flags(
     earliest_join = dict(
         (
             await session.execute(
-                select(SquadMembership.student_id, func.min(func.coalesce(SquadMembership.joined_on, date(1970, 1, 1))))
+                select(
+                    SquadMembership.student_id,
+                    func.min(func.coalesce(SquadMembership.joined_on, date(1970, 1, 1))),
+                )
                 .where(SquadMembership.student_id.in_(ids), SquadMembership.status == MembershipStatus.ACTIVE)
                 .group_by(SquadMembership.student_id)
             )
@@ -203,7 +206,9 @@ async def evaluate_flags(
         counted = [st for st in statuses if st != AttendanceStatus.EXCUSED]
         if not counted:
             continue
-        rate = Decimal(sum(1 for st in counted if st in (AttendanceStatus.PRESENT, AttendanceStatus.LATE))) / len(counted)
+        rate = Decimal(
+            sum(1 for st in counted if st in (AttendanceStatus.PRESENT, AttendanceStatus.LATE))
+        ) / len(counted)
         if rate < threshold:
             findings.append(
                 FlagFinding(
@@ -243,8 +248,12 @@ async def sync_flags(
             existing.rule, existing.explanation, existing.facts = f.rule, f.explanation, _jsonable(f.facts)
         else:
             flag = StudentFlag(
-                student_id=f.student_id, kind=f.kind, rule=f.rule, explanation=f.explanation,
-                facts=_jsonable(f.facts), raised_at=now,
+                student_id=f.student_id,
+                kind=f.kind,
+                rule=f.rule,
+                explanation=f.explanation,
+                facts=_jsonable(f.facts),
+                raised_at=now,
             )
             session.add(flag)
             raised.append(flag)

@@ -16,18 +16,55 @@ async def test_full_competition_day_replayed_twice_has_no_duplicates(client, wor
     sq, a1, a2 = str(world.ids["squad_a"]), str(world.ids["a1"]), str(world.ids["a2"])
     session_id = str(uuid.uuid4())
     queue = [
-        ("POST", "/api/v1/sessions", {"id": session_id, "idempotency_key": f"s-{session_id}", "squad_id": sq,
-                                      "starts_at": f"{ymd()}T07:30:00Z", "location": "Venue warm-up",
-                                      "client_modified_at": f"{ymd()}T07:31:00Z"}),
-        ("POST", f"/api/v1/sessions/{session_id}/attendance", {"records": [
-            {"student_id": a1, "status": "present", "client_modified_at": f"{ymd()}T07:35:00Z"},
-            {"student_id": a2, "status": "late", "client_modified_at": f"{ymd()}T07:35:00Z"}]}),
-        ("POST", "/api/v1/results", {"idempotency_key": "day-result-1", "edition_id": str(world.ids["edition"]),
-                                     "squad_id": sq, "participant_ids": [a1, a2], "placement": 3, "field_size": 24,
-                                     "rubric_scores": {"programming": 4}, "client_modified_at": f"{ymd()}T16:00:00Z"}),
-        ("POST", "/api/v1/results", {"idempotency_key": "day-result-2", "edition_id": str(world.ids["edition"]),
-                                     "squad_id": sq, "participant_ids": [a2], "placement": 7, "field_size": None,
-                                     "client_modified_at": f"{ymd()}T16:05:00Z"}),
+        (
+            "POST",
+            "/api/v1/sessions",
+            {
+                "id": session_id,
+                "idempotency_key": f"s-{session_id}",
+                "squad_id": sq,
+                "starts_at": f"{ymd()}T07:30:00Z",
+                "location": "Venue warm-up",
+                "client_modified_at": f"{ymd()}T07:31:00Z",
+            },
+        ),
+        (
+            "POST",
+            f"/api/v1/sessions/{session_id}/attendance",
+            {
+                "records": [
+                    {"student_id": a1, "status": "present", "client_modified_at": f"{ymd()}T07:35:00Z"},
+                    {"student_id": a2, "status": "late", "client_modified_at": f"{ymd()}T07:35:00Z"},
+                ]
+            },
+        ),
+        (
+            "POST",
+            "/api/v1/results",
+            {
+                "idempotency_key": "day-result-1",
+                "edition_id": str(world.ids["edition"]),
+                "squad_id": sq,
+                "participant_ids": [a1, a2],
+                "placement": 3,
+                "field_size": 24,
+                "rubric_scores": {"programming": 4},
+                "client_modified_at": f"{ymd()}T16:00:00Z",
+            },
+        ),
+        (
+            "POST",
+            "/api/v1/results",
+            {
+                "idempotency_key": "day-result-2",
+                "edition_id": str(world.ids["edition"]),
+                "squad_id": sq,
+                "participant_ids": [a2],
+                "placement": 7,
+                "field_size": None,
+                "client_modified_at": f"{ymd()}T16:05:00Z",
+            },
+        ),
     ]
     first, second = [], []
     for attempt in (first, second):
@@ -41,16 +78,38 @@ async def test_full_competition_day_replayed_twice_has_no_duplicates(client, wor
     assert second[2]["performance_index"] is not None
     assert second[3]["data_quality_flags"] == ["missing_field_size"]
     async with tenant_session(world.tenant) as s:
-        assert await s.scalar(select(func.count()).select_from(TrainingSession).where(
-            TrainingSession.id == uuid.UUID(session_id))) == 1
-        assert await s.scalar(select(func.count()).select_from(Attendance).where(
-            Attendance.session_id == uuid.UUID(session_id))) == 2
-        assert await s.scalar(select(func.count()).select_from(Result).where(
-            Result.idempotency_key.in_(["day-result-1", "day-result-2"]))) == 2
+        assert (
+            await s.scalar(
+                select(func.count())
+                .select_from(TrainingSession)
+                .where(TrainingSession.id == uuid.UUID(session_id))
+            )
+            == 1
+        )
+        assert (
+            await s.scalar(
+                select(func.count())
+                .select_from(Attendance)
+                .where(Attendance.session_id == uuid.UUID(session_id))
+            )
+            == 2
+        )
+        assert (
+            await s.scalar(
+                select(func.count())
+                .select_from(Result)
+                .where(Result.idempotency_key.in_(["day-result-1", "day-result-2"]))
+            )
+            == 2
+        )
 
 
 async def test_replay_response_is_marked(client, world: World) -> None:  # noqa: ANN001
-    body = {"idempotency_key": "replay-mark", "squad_id": str(world.ids["squad_a"]), "starts_at": f"{ymd()}T10:00:00Z"}
+    body = {
+        "idempotency_key": "replay-mark",
+        "squad_id": str(world.ids["squad_a"]),
+        "starts_at": f"{ymd()}T10:00:00Z",
+    }
     r1 = await client.post("/api/v1/sessions", json=body, headers=world["teacher_a"].headers)
     r2 = await client.post("/api/v1/sessions", json=body, headers=world["teacher_a"].headers)
     assert r1.status_code == 201 and r2.status_code == 200
@@ -59,8 +118,13 @@ async def test_replay_response_is_marked(client, world: World) -> None:  # noqa:
 
 async def test_attendance_last_write_wins(client, world: World) -> None:  # noqa: ANN001
     h = world["teacher_a"].headers
-    s = (await client.post("/api/v1/sessions", json={"squad_id": str(world.ids["squad_a"]),
-                                                    "starts_at": f"{ymd()}T15:00:00Z"}, headers=h)).json()
+    s = (
+        await client.post(
+            "/api/v1/sessions",
+            json={"squad_id": str(world.ids["squad_a"]), "starts_at": f"{ymd()}T15:00:00Z"},
+            headers=h,
+        )
+    ).json()
     a1 = str(world.ids["a1"])
     url = f"/api/v1/sessions/{s['id']}/attendance"
     newer = {"records": [{"student_id": a1, "status": "absent", "client_modified_at": f"{ymd()}T15:10:00Z"}]}
@@ -72,28 +136,61 @@ async def test_attendance_last_write_wins(client, world: World) -> None:  # noqa
 
 
 async def test_released_result_needs_admin_override_and_is_logged(client, world: World) -> None:  # noqa: ANN001
-    res = (await client.post("/api/v1/results", json={
-        "edition_id": str(world.ids["edition"]), "squad_id": str(world.ids["squad_a"]),
-        "participant_ids": [str(world.ids["a1"])], "placement": 2, "field_size": 12}, headers=world["teacher_a"].headers)).json()
+    res = (
+        await client.post(
+            "/api/v1/results",
+            json={
+                "edition_id": str(world.ids["edition"]),
+                "squad_id": str(world.ids["squad_a"]),
+                "participant_ids": [str(world.ids["a1"])],
+                "placement": 2,
+                "field_size": 12,
+            },
+            headers=world["teacher_a"].headers,
+        )
+    ).json()
     rel = await client.post(f"/api/v1/results/{res['id']}/release", headers=world["admin"].headers)
     assert rel.status_code == 200 and rel.json()["released_at"]
-    blocked = await client.patch(f"/api/v1/results/{res['id']}", json={"placement": 1}, headers=world["teacher_a"].headers)
+    blocked = await client.patch(
+        f"/api/v1/results/{res['id']}", json={"placement": 1}, headers=world["teacher_a"].headers
+    )
     assert blocked.status_code == 409
-    no_reason = await client.patch(f"/api/v1/results/{res['id']}", json={"placement": 1, "admin_override": True},
-                                   headers=world["admin"].headers)
+    no_reason = await client.patch(
+        f"/api/v1/results/{res['id']}",
+        json={"placement": 1, "admin_override": True},
+        headers=world["admin"].headers,
+    )
     assert no_reason.status_code == 422
-    ok = await client.patch(f"/api/v1/results/{res['id']}", json={
-        "placement": 1, "admin_override": True, "override_reason": "Organiser corrected the published table"},
-        headers=world["admin"].headers)
+    ok = await client.patch(
+        f"/api/v1/results/{res['id']}",
+        json={
+            "placement": 1,
+            "admin_override": True,
+            "override_reason": "Organiser corrected the published table",
+        },
+        headers=world["admin"].headers,
+    )
     assert ok.status_code == 200 and ok.json()["placement"] == 1
-    audit = (await client.get("/api/v1/audit?action=result.admin_override", headers=world["leader"].headers)).json()
+    audit = (
+        await client.get("/api/v1/audit?action=result.admin_override", headers=world["leader"].headers)
+    ).json()
     assert any(e["reason"] == "Organiser corrected the published table" for e in audit["items"])
 
 
 async def test_index_endpoint_explains_itself(client, world: World) -> None:  # noqa: ANN001
-    res = (await client.post("/api/v1/results", json={
-        "edition_id": str(world.ids["edition"]), "squad_id": str(world.ids["squad_a"]),
-        "participant_ids": [str(world.ids["a1"])], "placement": 1, "field_size": 10}, headers=world["teacher_a"].headers)).json()
+    res = (
+        await client.post(
+            "/api/v1/results",
+            json={
+                "edition_id": str(world.ids["edition"]),
+                "squad_id": str(world.ids["squad_a"]),
+                "participant_ids": [str(world.ids["a1"])],
+                "placement": 1,
+                "field_size": 10,
+            },
+            headers=world["teacher_a"].headers,
+        )
+    ).json()
     idx = (await client.get(f"/api/v1/results/{res['id']}/index", headers=world["teacher_a"].headers)).json()
     assert idx["components"]["field_size"] == 10 and idx["tier"] == "emirate"
     assert idx["performance_index"] == 69.97  # 83.30 at emirate tier weight 0.84

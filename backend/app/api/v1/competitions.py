@@ -43,7 +43,10 @@ def edition_out(e: CompetitionEdition) -> EditionOut:
 @router.get("/seasons", response_model=list[SeasonOut])
 async def list_seasons(ctx: CtxDep) -> list[SeasonOut]:
     ctx.require(Cap.VIEW_ROSTER)
-    return [SeasonOut.model_validate(s) for s in (await ctx.session.scalars(select(Season).order_by(Season.starts_on.desc()))).all()]
+    return [
+        SeasonOut.model_validate(s)
+        for s in (await ctx.session.scalars(select(Season).order_by(Season.starts_on.desc()))).all()
+    ]
 
 
 @router.post("/seasons", response_model=SeasonOut, status_code=201)
@@ -102,7 +105,9 @@ async def delete_exam_window(window_id: uuid.UUID, ctx: CtxDep) -> None:
 # ---------------- Competitions ----------------
 @router.get("/competitions", response_model=list[CompetitionOut])
 async def list_competitions(
-    ctx: CtxDep, discipline: str | None = None, status_: CompetitionStatus | None = Query(None, alias="status")
+    ctx: CtxDep,
+    discipline: str | None = None,
+    status_: CompetitionStatus | None = Query(None, alias="status"),
 ) -> list[CompetitionOut]:
     ctx.require(Cap.VIEW_ROSTER)
     stmt = select(Competition).order_by(Competition.name)
@@ -174,27 +179,46 @@ async def _resolve_skill(ctx, body: RequirementIn) -> Skill:  # noqa: ANN001
     return skill
 
 
-async def _upsert_requirement(ctx, competition_id: uuid.UUID, edition_id: uuid.UUID | None, body: RequirementIn) -> None:  # noqa: ANN001
+async def _upsert_requirement(
+    ctx, competition_id: uuid.UUID, edition_id: uuid.UUID | None, body: RequirementIn
+) -> None:  # noqa: ANN001
     skill = await _resolve_skill(ctx, body)
     stmt = select(SkillRequirement).where(
         SkillRequirement.competition_id == competition_id, SkillRequirement.skill_id == skill.id
     )
-    stmt = stmt.where(SkillRequirement.edition_id.is_(None)) if edition_id is None else stmt.where(
-        SkillRequirement.edition_id == edition_id
+    stmt = (
+        stmt.where(SkillRequirement.edition_id.is_(None))
+        if edition_id is None
+        else stmt.where(SkillRequirement.edition_id == edition_id)
     )
     req = await ctx.session.scalar(stmt)
     if req is None:
-        req = SkillRequirement(competition_id=competition_id, edition_id=edition_id, skill_id=skill.id,
-                               required_level=body.required_level)
+        req = SkillRequirement(
+            competition_id=competition_id,
+            edition_id=edition_id,
+            skill_id=skill.id,
+            required_level=body.required_level,
+        )
         ctx.session.add(req)
-    req.required_level, req.weight, req.is_core, req.removed = body.required_level, body.weight, body.is_core, body.removed
+    req.required_level, req.weight, req.is_core, req.removed = (
+        body.required_level,
+        body.weight,
+        body.is_core,
+        body.removed,
+    )
 
 
 def _req_dict(r) -> dict:  # noqa: ANN001
     return {
-        "skill_id": r.skill_id, "code": r.code, "name": r.name, "domain": r.domain,
-        "required_level": r.required_level, "weight": float(r.weight), "is_core": r.is_core,
-        "inherited": r.inherited, "requirement_id": r.requirement_id,
+        "skill_id": r.skill_id,
+        "code": r.code,
+        "name": r.name,
+        "domain": r.domain,
+        "required_level": r.required_level,
+        "weight": float(r.weight),
+        "is_core": r.is_core,
+        "inherited": r.inherited,
+        "requirement_id": r.requirement_id,
     }
 
 
@@ -210,14 +234,24 @@ async def competition_requirements(competition_id: uuid.UUID, ctx: CtxDep) -> li
         )
     ).all()
     return [
-        {"skill_id": s.id, "code": s.code, "name": s.name, "domain": s.domain, "required_level": r.required_level,
-         "weight": float(r.weight), "is_core": r.is_core, "requirement_id": r.id}
+        {
+            "skill_id": s.id,
+            "code": s.code,
+            "name": s.name,
+            "domain": s.domain,
+            "required_level": r.required_level,
+            "weight": float(r.weight),
+            "is_core": r.is_core,
+            "requirement_id": r.id,
+        }
         for r, s in rows
     ]
 
 
 @router.post("/competitions/{competition_id}/requirements", status_code=201)
-async def set_competition_requirements(competition_id: uuid.UUID, body: list[RequirementIn], ctx: CtxDep) -> list[dict]:
+async def set_competition_requirements(
+    competition_id: uuid.UUID, body: list[RequirementIn], ctx: CtxDep
+) -> list[dict]:
     """Requirements set once on the competition are inherited by every edition."""
     ctx.require(Cap.MANAGE_COMPETITIONS)
     await _competition(ctx, competition_id)
@@ -305,7 +339,9 @@ async def edition_requirements(edition_id: uuid.UUID, ctx: CtxDep) -> list[dict]
 
 
 @router.post("/editions/{edition_id}/requirements", status_code=201)
-async def set_edition_requirements(edition_id: uuid.UUID, body: list[RequirementIn], ctx: CtxDep) -> list[dict]:
+async def set_edition_requirements(
+    edition_id: uuid.UUID, body: list[RequirementIn], ctx: CtxDep
+) -> list[dict]:
     """Override or remove inherited requirements for one edition (e.g. a final needs Secure)."""
     ctx.require(Cap.MANAGE_COMPETITIONS)
     e = await _edition(ctx, edition_id)
@@ -345,7 +381,7 @@ async def eligible_students(edition_id: uuid.UUID, ctx: CtxDep, limit: int = Que
                 "name": s.display_name,
                 "year_group": s.year_group,
                 "percent": results[s.id].percent,
-                "ready": results[s.id].score is not None and results[s.id].score >= threshold,
+                "ready": results[s.id].is_ready(threshold),
                 "gap_count": len(results[s.id].gaps),
                 "gap_codes": [g.requirement.code for g in results[s.id].gaps],
             }
@@ -353,7 +389,12 @@ async def eligible_students(edition_id: uuid.UUID, ctx: CtxDep, limit: int = Que
         ),
         key=lambda r: (-(r["percent"] or 0), r["gap_count"], r["name"]),
     )[:limit]
-    ctx.audit("edition.eligible_students_read", "edition", e.id, context={"student_ids": [r["student_id"] for r in ranked]})
+    ctx.audit(
+        "edition.eligible_students_read",
+        "edition",
+        e.id,
+        context={"student_ids": [r["student_id"] for r in ranked]},
+    )
     return {
         "edition_id": e.id,
         "edition_name": e.name,
@@ -362,4 +403,3 @@ async def eligible_students(edition_id: uuid.UUID, ctx: CtxDep, limit: int = Que
         "students": ranked,
         "claim_type": "inferred",
     }
-

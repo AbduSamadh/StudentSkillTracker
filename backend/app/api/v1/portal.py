@@ -54,8 +54,14 @@ router = APIRouter(prefix="/portal", tags=["portal"])
 
 PARENT_LEVEL_EN = {1: "just starting", 2: "building up", 3: "confident", 4: "excelling"}
 PARENT_LEVEL_AR = {1: "في البداية", 2: "في طور التطوّر", 3: "متمكّن", 4: "متميّز"}
-OPTABLE = [MessageType.SELECTION_NOTICE, MessageType.LOGISTICS, MessageType.CONSENT_REQUEST,
-           MessageType.RESULT_NOTIFICATION, MessageType.PROGRESS_REPORT, MessageType.CELEBRATION]
+OPTABLE = [
+    MessageType.SELECTION_NOTICE,
+    MessageType.LOGISTICS,
+    MessageType.CONSENT_REQUEST,
+    MessageType.RESULT_NOTIFICATION,
+    MessageType.PROGRESS_REPORT,
+    MessageType.CELEBRATION,
+]
 
 
 async def _child(ctx, student_id: uuid.UUID) -> Student:  # noqa: ANN001
@@ -75,8 +81,11 @@ def _guardian_ids(ctx) -> set[uuid.UUID]:  # noqa: ANN001
 
 
 async def plain_language_profile(ctx, s: Student) -> list[dict]:  # noqa: ANN001
-    awards = (await ctx.session.scalars(select(SkillAward).where(
-        SkillAward.student_id == s.id, SkillAward.status == AwardStatus.VERIFIED))).all()
+    awards = (
+        await ctx.session.scalars(
+            select(SkillAward).where(SkillAward.student_id == s.id, SkillAward.status == AwardStatus.VERIFIED)
+        )
+    ).all()
     best: dict[uuid.UUID, SkillAward] = {}
     for a in awards:
         if a.skill_id not in best or a.level > best[a.skill_id].level:
@@ -102,15 +111,22 @@ async def child_overview(student_id: uuid.UUID, ctx: CtxDep) -> dict:
     s = await _child(ctx, student_id)
     today = datetime.now(UTC).date()
     upcoming = (
-        await ctx.session.scalars(
-            select(CompetitionEdition)
-            .join(SquadTargetEdition, SquadTargetEdition.edition_id == CompetitionEdition.id)
-            .join(SquadMembership, SquadMembership.squad_id == SquadTargetEdition.squad_id)
-            .where(SquadMembership.student_id == s.id, SquadMembership.status == MembershipStatus.ACTIVE,
-                   CompetitionEdition.event_ends >= today)
-            .order_by(CompetitionEdition.event_starts)
+        (
+            await ctx.session.scalars(
+                select(CompetitionEdition)
+                .join(SquadTargetEdition, SquadTargetEdition.edition_id == CompetitionEdition.id)
+                .join(SquadMembership, SquadMembership.squad_id == SquadTargetEdition.squad_id)
+                .where(
+                    SquadMembership.student_id == s.id,
+                    SquadMembership.status == MembershipStatus.ACTIVE,
+                    CompetitionEdition.event_ends >= today,
+                )
+                .order_by(CompetitionEdition.event_starts)
+            )
         )
-    ).unique().all()
+        .unique()
+        .all()
+    )
     results = (
         await ctx.session.execute(
             select(Result, CompetitionEdition)
@@ -123,29 +139,57 @@ async def child_overview(student_id: uuid.UUID, ctx: CtxDep) -> dict:
     consents = []
     for purpose in ConsentPurpose:
         c = await latest(ctx.session, s.id, purpose)
-        consents.append({
-            "purpose": purpose.value,
-            "active": await has_consent(ctx.session, s, purpose),
-            "decision": c.decision.value if c else None,
-            "decided_at": c.decided_at if c else None,
-            "withdrawn_at": c.withdrawn_at if c else None,
-            "version": c.version if c else None,
-            "can_withdraw": c is not None and c.decision == ConsentDecision.GRANTED and c.withdrawn_at is None,
-        })
-    pending = (await ctx.session.scalars(select(ConsentRequest).where(
-        ConsentRequest.student_id == s.id, ConsentRequest.status == ConsentRequestStatus.PENDING))).all()
+        consents.append(
+            {
+                "purpose": purpose.value,
+                "active": await has_consent(ctx.session, s, purpose),
+                "decision": c.decision.value if c else None,
+                "decided_at": c.decided_at if c else None,
+                "withdrawn_at": c.withdrawn_at if c else None,
+                "version": c.version if c else None,
+                "can_withdraw": c is not None
+                and c.decision == ConsentDecision.GRANTED
+                and c.withdrawn_at is None,
+            }
+        )
+    pending = (
+        await ctx.session.scalars(
+            select(ConsentRequest).where(
+                ConsentRequest.student_id == s.id, ConsentRequest.status == ConsentRequestStatus.PENDING
+            )
+        )
+    ).all()
     ctx.audit("portal.child_read", "student", s.id)
     return {
-        "student": {"id": s.id, "name": s.display_name, "year_group": s.year_group},
+        "student": {
+            "id": s.id,
+            "name": s.display_name,
+            "name_ar": s.full_name_ar,
+            "year_group": s.year_group,
+        },
         "upcoming_events": [
-            {"edition_id": e.id, "name": e.name, "competition": e.competition.name, "starts": e.event_starts,
-             "ends": e.event_ends, "venue": e.venue, "entry_fee": e.entry_fee, "currency": e.currency}
+            {
+                "edition_id": e.id,
+                "name": e.name,
+                "competition": e.competition.name,
+                "starts": e.event_starts,
+                "ends": e.event_ends,
+                "venue": e.venue,
+                "entry_fee": e.entry_fee,
+                "currency": e.currency,
+            }
             for e in upcoming
         ],
         "skills": await plain_language_profile(ctx, s),
         "results": [
-            {"edition": e.name, "competition": e.competition.name, "date": e.event_starts, "placement": r.placement,
-             "field_size": r.field_size, "award": r.award_title}
+            {
+                "edition": e.name,
+                "competition": e.competition.name,
+                "date": e.event_starts,
+                "placement": r.placement,
+                "field_size": r.field_size,
+                "award": r.award_title,
+            }
             for r, e in results
         ],
         "consents": consents,
@@ -163,17 +207,28 @@ async def my_messages(ctx: CtxDep) -> list[dict]:
         await ctx.session.execute(
             select(MessageDelivery, Message)
             .join(Message, Message.id == MessageDelivery.message_id)
-            .where(MessageDelivery.guardian_id.in_(gids or {uuid.UUID(int=0)}),
-                   MessageDelivery.status.in_([DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ]),
-                   Message.message_type.not_in(list(NEGATIVE_MESSAGE_TYPES)))
+            .where(
+                MessageDelivery.guardian_id.in_(gids or {uuid.UUID(int=0)}),
+                MessageDelivery.status.in_(
+                    [DeliveryStatus.SENT, DeliveryStatus.DELIVERED, DeliveryStatus.READ]
+                ),
+                Message.message_type.not_in(list(NEGATIVE_MESSAGE_TYPES)),
+            )
             .order_by(MessageDelivery.sent_at.desc())
             .limit(100)
         )
     ).all()
     return [
-        {"delivery_id": d.id, "type": m.message_type.value, "subject": d.rendered_subject, "body": d.rendered_body,
-         "sent_at": d.sent_at, "channel": d.channel_used.value if d.channel_used else None, "opened_at": d.opened_at,
-         "is_emergency": m.is_emergency}
+        {
+            "delivery_id": d.id,
+            "type": m.message_type.value,
+            "subject": d.rendered_subject,
+            "body": d.rendered_body,
+            "sent_at": d.sent_at,
+            "channel": d.channel_used.value if d.channel_used else None,
+            "opened_at": d.opened_at,
+            "is_emergency": m.is_emergency,
+        }
         for d, m in rows
     ]
 
@@ -189,7 +244,9 @@ async def mark_read(delivery_id: uuid.UUID, ctx: CtxDep) -> dict:
         d.opened_at = now
         if d.status in (DeliveryStatus.SENT, DeliveryStatus.DELIVERED):
             d.status = DeliveryStatus.READ
-    for n in (await ctx.session.scalars(select(PortalNotification).where(PortalNotification.delivery_id == d.id))).all():
+    for n in (
+        await ctx.session.scalars(select(PortalNotification).where(PortalNotification.delivery_id == d.id))
+    ).all():
         n.read_at = n.read_at or now
     return {"ok": True}
 
@@ -203,8 +260,12 @@ class ConsentIn(BaseModel):
 
 
 async def _current_form(ctx, purpose: ConsentPurpose) -> ConsentForm | None:  # noqa: ANN001
-    return await ctx.session.scalar(select(ConsentForm).where(
-        ConsentForm.purpose == purpose, ConsentForm.is_current.is_(True)).order_by(ConsentForm.version.desc()).limit(1))
+    return await ctx.session.scalar(
+        select(ConsentForm)
+        .where(ConsentForm.purpose == purpose, ConsentForm.is_current.is_(True))
+        .order_by(ConsentForm.version.desc())
+        .limit(1)
+    )
 
 
 @router.get("/consent-forms/{purpose}")
@@ -212,8 +273,14 @@ async def consent_form(purpose: ConsentPurpose, ctx: CtxDep) -> dict:
     f = await _current_form(ctx, purpose)
     if f is None:
         raise not_found()
-    return {"purpose": f.purpose.value, "version": f.version, "title_en": f.title_en, "body_en": f.body_en,
-            "title_ar": f.title_ar, "body_ar": f.body_ar}
+    return {
+        "purpose": f.purpose.value,
+        "version": f.version,
+        "title_en": f.title_en,
+        "body_en": f.body_en,
+        "title_ar": f.title_ar,
+        "body_ar": f.body_ar,
+    }
 
 
 @router.post("/consents", status_code=201)
@@ -227,19 +294,40 @@ async def give_consent(body: ConsentIn, ctx: CtxDep) -> dict:
         raise not_found("Student not found")
     form = await _current_form(ctx, body.purpose)
     now = datetime.now(UTC)
-    c = Consent(student_id=s.id, guardian_id=link_guardian, purpose=body.purpose, edition_id=body.edition_id,
-                consent_form_id=form.id if form else None, version=form.version if form else 1,
-                decision=body.decision, decided_at=now, method="portal_verified", recorded_by_id=ctx.user_id)
+    c = Consent(
+        student_id=s.id,
+        guardian_id=link_guardian,
+        purpose=body.purpose,
+        edition_id=body.edition_id,
+        consent_form_id=form.id if form else None,
+        version=form.version if form else 1,
+        decision=body.decision,
+        decided_at=now,
+        method="portal_verified",
+        recorded_by_id=ctx.user_id,
+    )
     ctx.session.add(c)
     await ctx.session.flush()
     if body.consent_request_id:
         req = await ctx.session.get(ConsentRequest, body.consent_request_id)
         if req and req.student_id == s.id and req.guardian_id == link_guardian:
-            req.status = (ConsentRequestStatus.GRANTED if body.decision == ConsentDecision.GRANTED
-                          else ConsentRequestStatus.DECLINED)
+            req.status = (
+                ConsentRequestStatus.GRANTED
+                if body.decision == ConsentDecision.GRANTED
+                else ConsentRequestStatus.DECLINED
+            )
             req.responded_at, req.consent_id = now, c.id
-    ctx.audit("consent.decide", "student", s.id, context={"purpose": body.purpose.value, "decision": body.decision.value,
-                                                         "version": c.version, "edition_id": body.edition_id})
+    ctx.audit(
+        "consent.decide",
+        "student",
+        s.id,
+        context={
+            "purpose": body.purpose.value,
+            "decision": body.decision.value,
+            "version": c.version,
+            "edition_id": body.edition_id,
+        },
+    )
     return {"id": c.id, "decision": c.decision.value, "version": c.version}
 
 
@@ -259,9 +347,16 @@ async def withdraw_consent(body: WithdrawIn, ctx: CtxDep) -> dict:
     if c is None or c.withdrawn_at is not None or c.decision != ConsentDecision.GRANTED:
         # Record an explicit decline so a default (e.g. communications) is overridden too.
         guardian_id = next((link.guardian_id for link in s.guardian_links if link.guardian_id in gids), None)
-        c = Consent(student_id=s.id, guardian_id=guardian_id, purpose=body.purpose, edition_id=body.edition_id,
-                    decision=ConsentDecision.DECLINED, decided_at=now, method="portal_verified",
-                    recorded_by_id=ctx.user_id)
+        c = Consent(
+            student_id=s.id,
+            guardian_id=guardian_id,
+            purpose=body.purpose,
+            edition_id=body.edition_id,
+            decision=ConsentDecision.DECLINED,
+            decided_at=now,
+            method="portal_verified",
+            recorded_by_id=ctx.user_id,
+        )
         ctx.session.add(c)
     else:
         c.withdrawn_at = now
@@ -282,13 +377,28 @@ async def get_preferences(ctx: CtxDep) -> dict:
         g = await ctx.session.get(Guardian, gid)
         if g is None:
             continue
-        opts = {o.category.value for o in (await ctx.session.scalars(select(CommunicationOptOut).where(
-            CommunicationOptOut.guardian_id == g.id, CommunicationOptOut.opted_back_in_at.is_(None)))).all()}
-        out.append({
-            "guardian_id": g.id, "preferred_channel": g.preferred_channel.value, "language": g.language.value,
-            "has_whatsapp": bool(g.whatsapp_enc), "has_phone": bool(g.phone_enc), "has_email": bool(g.email_enc),
-            "categories": [{"category": c.value, "opted_out": c.value in opts} for c in OPTABLE],
-        })
+        opts = {
+            o.category.value
+            for o in (
+                await ctx.session.scalars(
+                    select(CommunicationOptOut).where(
+                        CommunicationOptOut.guardian_id == g.id,
+                        CommunicationOptOut.opted_back_in_at.is_(None),
+                    )
+                )
+            ).all()
+        }
+        out.append(
+            {
+                "guardian_id": g.id,
+                "preferred_channel": g.preferred_channel.value,
+                "language": g.language.value,
+                "has_whatsapp": bool(g.whatsapp_enc),
+                "has_phone": bool(g.phone_enc),
+                "has_email": bool(g.email_enc),
+                "categories": [{"category": c.value, "opted_out": c.value in opts} for c in OPTABLE],
+            }
+        )
     return {"guardians": out}
 
 
@@ -312,15 +422,23 @@ class OptOutIn(BaseModel):
     opted_out: bool
 
 
-async def _set_opt_out(session, guardian_id: uuid.UUID, category: MessageType, opted_out: bool, source: str) -> None:  # noqa: ANN001
+async def _set_opt_out(
+    session, guardian_id: uuid.UUID, category: MessageType, opted_out: bool, source: str
+) -> None:  # noqa: ANN001
     if category not in OPTABLE:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "This category cannot be opted out of")
-    active = await session.scalar(select(CommunicationOptOut).where(
-        CommunicationOptOut.guardian_id == guardian_id, CommunicationOptOut.category == category,
-        CommunicationOptOut.opted_back_in_at.is_(None)))
+    active = await session.scalar(
+        select(CommunicationOptOut).where(
+            CommunicationOptOut.guardian_id == guardian_id,
+            CommunicationOptOut.category == category,
+            CommunicationOptOut.opted_back_in_at.is_(None),
+        )
+    )
     now = datetime.now(UTC)
     if opted_out and active is None:
-        session.add(CommunicationOptOut(guardian_id=guardian_id, category=category, opted_out_at=now, source=source))
+        session.add(
+            CommunicationOptOut(guardian_id=guardian_id, category=category, opted_out_at=now, source=source)
+        )
     elif not opted_out and active is not None:
         active.opted_back_in_at = now
 
@@ -351,8 +469,15 @@ async def opt_out_by_link(body: TokenIn) -> dict:
         await _set_opt_out(session, gid, cat, True, "link")
         from app import audit
 
-        audit.record(session, actor_user_id=None, actor_roles=["parent"], action="portal.opt_out_link",
-                     subject_type="guardian", subject_id=gid, context={"category": cat.value})
+        audit.record(
+            session,
+            actor_user_id=None,
+            actor_roles=["parent"],
+            action="portal.opt_out_link",
+            subject_type="guardian",
+            subject_id=gid,
+            context={"category": cat.value},
+        )
         await session.commit()
     return {"ok": True, "category": cat.value}
 
@@ -369,8 +494,10 @@ async def student_home(ctx: CtxDep) -> dict:
     if s is None:
         raise not_found()
     if s.year_group < ctx.settings.student_portal_min_year:
-        raise HTTPException(status.HTTP_403_FORBIDDEN, "The student portal opens in Year "
-                            f"{ctx.settings.student_portal_min_year}")
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            f"The student portal opens in Year {ctx.settings.student_portal_min_year}",
+        )
     recs = await competition_recommendations(ctx.session, ctx.settings, s, datetime.now(UTC).date())
     ctx.audit("portal.student_read", "student", s.id)
     return {

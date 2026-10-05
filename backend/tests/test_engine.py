@@ -7,20 +7,43 @@ from decimal import Decimal
 import pytest
 
 from app.services.performance import FLAG_MISSING_FIELD_SIZE, FLAG_PLACEMENT_EXCEEDS_FIELD, performance_index
-from app.services.readiness import EarnedEvidence, Requirement, compute_readiness, readiness_clusters, shared_gaps
+from app.services.readiness import (
+    EarnedEvidence,
+    Requirement,
+    compute_readiness,
+    readiness_clusters,
+    shared_gaps,
+)
 from app.services.reporting.suppression import Figure, ReportBody
 from app.tenancy import TenantSettings
 
 
 def req(code: str, level: int, weight: float = 1, core: bool = False) -> Requirement:
-    return Requirement(skill_id=uuid.uuid5(uuid.NAMESPACE_DNS, code), code=code, name=code, parent_label_en=code,
-                       parent_label_ar=code, domain="Coding", required_level=level, weight=Decimal(str(weight)),
-                       is_core=core, requirement_id=uuid.uuid4(), inherited=True)
+    return Requirement(
+        skill_id=uuid.uuid5(uuid.NAMESPACE_DNS, code),
+        code=code,
+        name=code,
+        parent_label_en=code,
+        parent_label_ar=code,
+        domain="Coding",
+        required_level=level,
+        weight=Decimal(str(weight)),
+        is_core=core,
+        requirement_id=uuid.uuid4(),
+        inherited=True,
+    )
 
 
 def ev(level: int) -> EarnedEvidence:
-    return EarnedEvidence(level=level, award_id=uuid.uuid4(), source="teacher", confidence="high",
-                          awarded_on=date(2026, 9, 1), verified_by_id=uuid.uuid4(), evidence_note="seen")
+    return EarnedEvidence(
+        level=level,
+        award_id=uuid.uuid4(),
+        source="teacher",
+        confidence="high",
+        awarded_on=date(2026, 9, 1),
+        verified_by_id=uuid.uuid4(),
+        evidence_note="seen",
+    )
 
 
 R = [req("A", 3, 2), req("B", 2, 1), req("C", 4, 1)]
@@ -33,7 +56,10 @@ def test_readiness_formula_matches_spec() -> None:
     # (2·1 + 1·0.5 + 1·0) / 4 = 0.625
     assert res.score == Decimal("0.6250")
     assert res.percent == 63
-    assert [g.requirement.code for g in res.gaps] == ["B", "C"] or [g.requirement.code for g in res.gaps] == ["C", "B"]
+    assert [g.requirement.code for g in res.gaps] == ["B", "C"] or [g.requirement.code for g in res.gaps] == [
+        "C",
+        "B",
+    ]
 
 
 def test_exceeding_a_requirement_is_capped_at_one() -> None:
@@ -67,25 +93,35 @@ def test_shared_gaps_rank_by_students_unblocked() -> None:
     full = {r.skill_id: ev(4) for r in reqs}
     students = []
     for _ in range(4):  # missing only CORE -> 2/5 = 40%, closing CORE -> 100%
-        students.append(compute_readiness(uuid.uuid4(), uuid.uuid4(), reqs, {k: v for k, v in full.items()
-                                                                              if k != reqs[0].skill_id}))
+        students.append(
+            compute_readiness(
+                uuid.uuid4(), uuid.uuid4(), reqs, {k: v for k, v in full.items() if k != reqs[0].skill_id}
+            )
+        )
     # one student missing only X -> 80%, already ready
-    students.append(compute_readiness(uuid.uuid4(), uuid.uuid4(), reqs, {k: v for k, v in full.items()
-                                                                          if k != reqs[1].skill_id}))
+    students.append(
+        compute_readiness(
+            uuid.uuid4(), uuid.uuid4(), reqs, {k: v for k, v in full.items() if k != reqs[1].skill_id}
+        )
+    )
     gaps = shared_gaps(students, threshold)
     assert gaps[0]["code"] == "CORE" and gaps[0]["student_count"] == 4 and gaps[0]["unblocks"] == 4
     clusters = readiness_clusters(students, threshold)
-    assert clusters == [{"missing_codes": ["CORE"], "skills_away": 1,
-                         "student_ids": [s.student_id for s in students[:4]]}]
+    assert clusters == [
+        {"missing_codes": ["CORE"], "skills_away": 1, "student_ids": [s.student_id for s in students[:4]]}
+    ]
 
 
-@pytest.mark.parametrize(("p", "f", "tier", "expected"), [
-    (1, 300, "1.00", Decimal("100.00")),  # winning the largest reference field at national tier
-    (1, 10, "1.00", Decimal("83.30")),  # 100·(0.72 + 0.28·log10(10)/log10(300))
-    (10, 10, "1.00", Decimal("11.30")),  # last place still earns field-size credit
-    (1, 1, "0.62", Decimal("44.64")),  # a field of one: placement score 1, no field credit
-    (2, 28, "0.84", Decimal("71.98")),
-])
+@pytest.mark.parametrize(
+    ("p", "f", "tier", "expected"),
+    [
+        (1, 300, "1.00", Decimal("100.00")),  # winning the largest reference field at national tier
+        (1, 10, "1.00", Decimal("83.30")),  # 100·(0.72 + 0.28·log10(10)/log10(300))
+        (10, 10, "1.00", Decimal("11.30")),  # last place still earns field-size credit
+        (1, 1, "0.62", Decimal("44.64")),  # a field of one: placement score 1, no field credit
+        (2, 28, "0.84", Decimal("71.98")),
+    ],
+)
 def test_performance_index_formula(p: int, f: int, tier: str, expected: Decimal) -> None:
     assert performance_index(p, f, Decimal(tier)).value == expected
 

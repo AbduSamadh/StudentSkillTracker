@@ -93,7 +93,9 @@ class Result(TenantScoped, Base):
     edition_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("competition_editions.id", ondelete="CASCADE"), index=True
     )
-    squad_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("squads.id", ondelete="SET NULL"), index=True)
+    squad_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("squads.id", ondelete="SET NULL"), index=True
+    )
     entry_name: Mapped[str | None] = mapped_column(String(160))
     placement: Mapped[int | None] = mapped_column(Integer)
     field_size: Mapped[int | None] = mapped_column(Integer)

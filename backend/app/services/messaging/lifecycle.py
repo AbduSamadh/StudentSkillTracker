@@ -46,7 +46,9 @@ def with_opt_out_footer(body: str, message: Message, ctx: dict, lang: Language) 
     """One-tap opt-out per category on every message except emergencies."""
     if message.message_type == MessageType.EMERGENCY or ctx["opt_out_link"] in body:
         return body
-    en, ar = CATEGORY_LABELS.get(message.message_type, (message.message_type.value, message.message_type.value))
+    en, ar = CATEGORY_LABELS.get(
+        message.message_type, (message.message_type.value, message.message_type.value)
+    )
     if lang == Language.AR:
         return f"{body}\n\nلإيقاف رسائل {ar}: {ctx['opt_out_link']}"
     return f"{body}\n\nTo stop receiving {en}: {ctx['opt_out_link']}"
@@ -79,7 +81,9 @@ async def preview(
         except RenderError as exc:
             errors.append(str(exc))
             subject, body = None, None
-        verdict = await evaluate(session, settings, message, fam.guardian.id, [s.id for s in fam.students], now)
+        verdict = await evaluate(
+            session, settings, message, fam.guardian.id, [s.id for s in fam.students], now
+        )
         samples.append(
             {
                 "guardian_id": fam.guardian.id,
@@ -119,15 +123,21 @@ async def preview(
         "families_opted_out": opted,
         "families_one_below_cap": near_cap,
         "weekly_cap": settings.weekly_message_cap,
-        "quiet_hours": {"start": settings.quiet_hours.start.isoformat(), "end": settings.quiet_hours.end.isoformat()},
+        "quiet_hours": {
+            "start": settings.quiet_hours.start.isoformat(),
+            "end": settings.quiet_hours.end.isoformat(),
+        },
     }
 
 
-async def _materialise(session: AsyncSession, tenant: Tenant, message: Message, template: MessageTemplate,
-                       families: list[Family]) -> int:
+async def _materialise(
+    session: AsyncSession, tenant: Tenant, message: Message, template: MessageTemplate, families: list[Family]
+) -> int:
     """Snapshot what each family will receive at the moment of release."""
     existing = set(
-        await session.scalars(select(MessageDelivery.guardian_id).where(MessageDelivery.message_id == message.id))
+        await session.scalars(
+            select(MessageDelivery.guardian_id).where(MessageDelivery.message_id == message.id)
+        )
     )
     n = 0
     for fam in families:
@@ -153,17 +163,30 @@ async def _materialise(session: AsyncSession, tenant: Tenant, message: Message, 
             )
         )
         if message.message_type == MessageType.CONSENT_REQUEST:
-            purpose = ConsentPurpose((message.variables or {}).get("consent_purpose", ConsentPurpose.TRAVEL.value))
+            purpose = ConsentPurpose(
+                (message.variables or {}).get("consent_purpose", ConsentPurpose.TRAVEL.value)
+            )
             for st in fam.students:
-                session.add(ConsentRequest(message_id=message.id, student_id=st.id, guardian_id=fam.guardian.id,
-                                           purpose=purpose, edition_id=message.edition_id))
+                session.add(
+                    ConsentRequest(
+                        message_id=message.id,
+                        student_id=st.id,
+                        guardian_id=fam.guardian.id,
+                        purpose=purpose,
+                        edition_id=message.edition_id,
+                    )
+                )
         n += 1
     await session.flush()
     return n
 
 
 async def release(
-    session: AsyncSession, tenant: Tenant, message: Message, released_by: uuid.UUID, now: datetime,
+    session: AsyncSession,
+    tenant: Tenant,
+    message: Message,
+    released_by: uuid.UUID,
+    now: datetime,
     scheduled_for: datetime | None = None,
 ) -> int:
     if message.message_type in NEGATIVE_MESSAGE_TYPES:
@@ -174,7 +197,9 @@ async def release(
     if message.status != MessageStatus.DRAFT:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Message is {message.status.value}")
     if message.previewed_at is None:
-        raise HTTPException(status.HTTP_409_CONFLICT, "Preview the message with real recipients before release")
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Preview the message with real recipients before release"
+        )
     template = await template_for(session, message)
     if template.status != TemplateStatus.APPROVED:
         raise HTTPException(status.HTTP_409_CONFLICT, "The template version has not been approved")
@@ -196,7 +221,9 @@ async def prepare_handoff(session: AsyncSession, tenant: Tenant, message: Messag
     """Negative-news path: render per-family drafts for a member of staff to send personally.
     These deliveries are never dispatched by the platform."""
     if message.message_type not in NEGATIVE_MESSAGE_TYPES:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Only negative-news messages use personal hand-off")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Only negative-news messages use personal hand-off"
+        )
     template = await template_for(session, message)
     families = await resolve_families(session, message)
     try:
@@ -216,8 +243,9 @@ def can_dispatch(message: Message) -> bool:
     )
 
 
-async def evaluate_delivery(session: AsyncSession, settings: TenantSettings, message: Message,
-                            d: MessageDelivery, now: datetime):  # noqa: ANN201
+async def evaluate_delivery(
+    session: AsyncSession, settings: TenantSettings, message: Message, d: MessageDelivery, now: datetime
+):  # noqa: ANN201
     return await evaluate(session, settings, message, d.guardian_id, list(d.student_ids), now)
 
 

@@ -95,7 +95,9 @@ def phrase(rule: str, f: dict) -> tuple[str, str]:
         )
         return en, ar
     if rule == "under_challenged":
-        en = f"{name} is Advanced on every skill the current programme requires and is being under-challenged."
+        en = (
+            f"{name} is Advanced on every skill the current programme requires and is being under-challenged."
+        )
         ar = f"{name}: المستوى المتقدّم في جميع المهارات التي يتطلبها البرنامج الحالي، ما يعني الحاجة إلى تحدٍّ أكبر."
         return en, ar
     if rule == "attendance_strong":
@@ -114,7 +116,9 @@ async def draft_insights(
 
     awards = (
         await session.scalars(
-            select(SkillAward).where(SkillAward.student_id == student.id, SkillAward.status == AwardStatus.VERIFIED)
+            select(SkillAward).where(
+                SkillAward.student_id == student.id, SkillAward.status == AwardStatus.VERIFIED
+            )
         )
     ).all()
     before: dict[uuid.UUID, int] = defaultdict(int)
@@ -127,7 +131,12 @@ async def draft_insights(
             after[a.skill_id] = max(after[a.skill_id], a.level)
         if start <= a.awarded_on <= end:
             in_period[a.skill_id].append(a)
-    skills = {s.id: s for s in (await session.scalars(select(Skill).where(Skill.id.in_(list(after) or [uuid.UUID(int=0)])))).all()}
+    skills = {
+        s.id: s
+        for s in (
+            await session.scalars(select(Skill).where(Skill.id.in_(list(after) or [uuid.UUID(int=0)])))
+        ).all()
+    }
 
     # Rule: level_progress — largest jump from an existing level.
     progress = [
@@ -172,8 +181,13 @@ async def draft_insights(
             Draft(
                 "new_verified_skills",
                 ClaimType.MEASURED,
-                {"name": name, "count": len(new_skills), "example_en": ex.parent_label_en,
-                 "example_ar": ex.parent_label_ar, "skill_codes": sorted(skills[s].code for s in new_skills)},
+                {
+                    "name": name,
+                    "count": len(new_skills),
+                    "example_en": ex.parent_label_en,
+                    "example_ar": ex.parent_label_ar,
+                    "skill_codes": sorted(skills[s].code for s in new_skills),
+                },
             )
         )
 
@@ -196,21 +210,34 @@ async def draft_insights(
                 )
             )
         elif f.kind == FlagKind.STRETCH:
-            drafts.append(Draft("under_challenged", ClaimType.INFERRED, {"name": name, **f.facts, "rule": f.rule}))
+            drafts.append(
+                Draft("under_challenged", ClaimType.INFERRED, {"name": name, **f.facts, "rule": f.rule})
+            )
 
     # Rule: attendance_strong — positive only. Attendance concerns are never sent automatically.
     rows = (
-        await session.execute(
-            select(Attendance.status)
-            .join(TrainingSession, TrainingSession.id == Attendance.session_id)
-            .where(Attendance.student_id == student.id, TrainingSession.starts_at >= start,
-                   TrainingSession.starts_at <= end + timedelta(days=1))
+        (
+            await session.execute(
+                select(Attendance.status)
+                .join(TrainingSession, TrainingSession.id == Attendance.session_id)
+                .where(
+                    Attendance.student_id == student.id,
+                    TrainingSession.starts_at >= start,
+                    TrainingSession.starts_at <= end + timedelta(days=1),
+                )
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     total = sum(1 for st in rows if st != AttendanceStatus.EXCUSED)
     attended = sum(1 for st in rows if st in (AttendanceStatus.PRESENT, AttendanceStatus.LATE))
     if total >= 4 and attended / total >= 0.9:
-        drafts.append(Draft("attendance_strong", ClaimType.MEASURED, {"name": name, "attended": attended, "total": total}))
+        drafts.append(
+            Draft(
+                "attendance_strong", ClaimType.MEASURED, {"name": name, "attended": attended, "total": total}
+            )
+        )
 
     for d in drafts:
         d.facts["period"] = period
@@ -227,7 +254,9 @@ async def generate_for_student(
     existing = {
         i.rule: i
         for i in (
-            await session.scalars(select(Insight).where(Insight.student_id == student.id, Insight.period == period))
+            await session.scalars(
+                select(Insight).where(Insight.student_id == student.id, Insight.period == period)
+            )
         ).all()
     }
     out = []
@@ -235,8 +264,15 @@ async def generate_for_student(
         en, ar = phrase(d.rule, d.facts)
         ins = existing.get(d.rule)
         if ins is None:
-            ins = Insight(student_id=student.id, period=period, rule=d.rule, claim_type=d.claim_type,
-                          text_en=en, text_ar=ar, facts=_jsonable(d.facts))
+            ins = Insight(
+                student_id=student.id,
+                period=period,
+                rule=d.rule,
+                claim_type=d.claim_type,
+                text_en=en,
+                text_ar=ar,
+                facts=_jsonable(d.facts),
+            )
             session.add(ins)
         elif ins.status == InsightStatus.DRAFT:
             ins.text_en, ins.text_ar, ins.facts, ins.claim_type = en, ar, _jsonable(d.facts), d.claim_type

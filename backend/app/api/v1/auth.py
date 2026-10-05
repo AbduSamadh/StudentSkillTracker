@@ -99,7 +99,9 @@ def _audit_login(session, user: User, action: str, **context) -> None:  # noqa: 
     )
 
 
-async def _complete_first_factor(session, response: Response, user: User, request: Request, mfa: bool) -> TokenOut:  # noqa: ANN001
+async def _complete_first_factor(
+    session, response: Response, user: User, request: Request, mfa: bool
+) -> TokenOut:  # noqa: ANN001
     if auth_service.requires_mfa(user) and not mfa:
         token = create_scoped_token("login_mfa", {"uid": str(user.id), "tid": str(user.tenant_id)}, 5)
         await session.commit()
@@ -238,7 +240,11 @@ async def oidc_login(body: OidcCallback, request: Request, response: Response) -
         signing_key = await asyncio.to_thread(jwks.get_signing_key_from_jwt, id_token)
         try:
             claims = jwt.decode(
-                id_token, signing_key.key, algorithms=["RS256", "ES256"], audience=oidc.client_id, issuer=disco["issuer"]
+                id_token,
+                signing_key.key,
+                algorithms=["RS256", "ES256"],
+                audience=oidc.client_id,
+                issuer=disco["issuer"],
             )
         except jwt.PyJWTError as exc:
             raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid identity token") from exc
@@ -251,7 +257,9 @@ async def oidc_login(body: OidcCallback, request: Request, response: Response) -
             if user is not None:
                 user.oidc_subject = claims["sub"]
         if user is None or not user.is_active:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "Your account has not been set up on this platform")
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN, "Your account has not been set up on this platform"
+            )
         mfa = bool(set(claims.get("amr") or []) & set(oidc.mfa_amr_values))
         return await _complete_first_factor(session, response, user, request, mfa=mfa)
 
@@ -266,7 +274,9 @@ async def parent_request_link(body: ParentLinkRequest, request: Request) -> dict
         return {"ok": True}
     settings = get_settings()
     async with tenant_session(tenant.id) as session:
-        guardians = (await session.scalars(select(Guardian).where(Guardian.email_hash == blind_index(body.email)))).all()
+        guardians = (
+            await session.scalars(select(Guardian).where(Guardian.email_hash == blind_index(body.email)))
+        ).all()
         if not guardians:
             return {"ok": True}
         email = body.email.lower()
@@ -280,7 +290,9 @@ async def parent_request_link(body: ParentLinkRequest, request: Request) -> dict
             g.user_id = user.id
             if (Role.PARENT, g.id) not in existing:
                 session.add(
-                    RoleAssignment(user_id=user.id, role=Role.PARENT, scope_type=ScopeType.GUARDIAN, scope_id=g.id)
+                    RoleAssignment(
+                        user_id=user.id, role=Role.PARENT, scope_type=ScopeType.GUARDIAN, scope_id=g.id
+                    )
                 )
         raw = new_opaque_token(tenant.id)
         session.add(
@@ -300,8 +312,14 @@ async def parent_request_link(body: ParentLinkRequest, request: Request) -> dict
             else f"Use this link to sign in within {settings.magic_link_minutes} minutes:\n{link}"
         )
         await send_email(session, email, subject, text, meta={"kind": "magic_link"})
-        audit.record(session, actor_user_id=user.id, actor_roles=["parent"], action="auth.magic_link_requested",
-                     subject_type="user", subject_id=user.id)
+        audit.record(
+            session,
+            actor_user_id=user.id,
+            actor_roles=["parent"],
+            action="auth.magic_link_requested",
+            subject_type="user",
+            subject_id=user.id,
+        )
         await session.commit()
     return {"ok": True}
 
@@ -400,7 +418,10 @@ async def me(ctx: CtxDep) -> MeOut:
         display_name=p.display_name,
         email=p.email,
         locale=user.locale.value,
-        roles=[{"role": a.role.value, "scope_type": a.scope_type.value, "scope_id": a.scope_id} for a in p.assignments],
+        roles=[
+            {"role": a.role.value, "scope_type": a.scope_type.value, "scope_id": a.scope_id}
+            for a in p.assignments
+        ],
         capabilities=sorted(c.value for c in CAPABILITIES if p.can(c)),
         mfa=p.mfa,
         tenant={

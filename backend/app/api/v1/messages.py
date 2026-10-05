@@ -82,7 +82,9 @@ async def create_template_version(body: TemplateIn, ctx: CtxDep) -> TemplateOut:
         validate_template(body.subject_en, body.body_en, body.subject_ar, body.body_ar)
     except RenderError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    current = await ctx.session.scalar(select(func.max(MessageTemplate.version)).where(MessageTemplate.key == body.key))
+    current = await ctx.session.scalar(
+        select(func.max(MessageTemplate.version)).where(MessageTemplate.key == body.key)
+    )
     t = MessageTemplate(
         **body.model_dump(),
         version=(current or 0) + 1,
@@ -91,7 +93,9 @@ async def create_template_version(body: TemplateIn, ctx: CtxDep) -> TemplateOut:
     )
     ctx.session.add(t)
     await ctx.session.flush()
-    ctx.audit("template.create_version", "message_template", t.id, context={"key": t.key, "version": t.version})
+    ctx.audit(
+        "template.create_version", "message_template", t.id, context={"key": t.key, "version": t.version}
+    )
     return TemplateOut.model_validate(t)
 
 
@@ -104,8 +108,13 @@ async def approve_template(template_id: uuid.UUID, ctx: CtxDep) -> TemplateOut:
     if t.status != TemplateStatus.DRAFT:
         raise HTTPException(status.HTTP_409_CONFLICT, f"Template is {t.status.value}")
     # Older approved versions of the same key are retired; drafts pinned to them keep working.
-    for old in (await ctx.session.scalars(select(MessageTemplate).where(
-            MessageTemplate.key == t.key, MessageTemplate.status == TemplateStatus.APPROVED))).all():
+    for old in (
+        await ctx.session.scalars(
+            select(MessageTemplate).where(
+                MessageTemplate.key == t.key, MessageTemplate.status == TemplateStatus.APPROVED
+            )
+        )
+    ).all():
         old.status = TemplateStatus.RETIRED
     t.status, t.approved_by_id, t.approved_at = TemplateStatus.APPROVED, ctx.user_id, datetime.now(UTC)
     ctx.audit("template.approve", "message_template", t.id, context={"key": t.key, "version": t.version})
@@ -171,8 +180,14 @@ async def _scoped_students(ctx, body: DraftIn) -> list[uuid.UUID]:  # noqa: ANN0
     ids = list(body.student_ids)
     if body.squad_id:
         ensure_squad_in_scope(ctx.principal, body.squad_id)
-        ids += list(await ctx.session.scalars(select(SquadMembership.student_id).where(
-            SquadMembership.squad_id == body.squad_id, SquadMembership.status == MembershipStatus.ACTIVE)))
+        ids += list(
+            await ctx.session.scalars(
+                select(SquadMembership.student_id).where(
+                    SquadMembership.squad_id == body.squad_id,
+                    SquadMembership.status == MembershipStatus.ACTIVE,
+                )
+            )
+        )
     ids = list(dict.fromkeys(ids))
     for sid in ids:
         await ensure_student_in_scope(ctx.session, ctx.principal, sid)
@@ -181,7 +196,9 @@ async def _scoped_students(ctx, body: DraftIn) -> list[uuid.UUID]:  # noqa: ANN0
 
 @router.get("/messages", response_model=list[MessageOut])
 async def list_messages(
-    ctx: CtxDep, status_: MessageStatus | None = Query(None, alias="status"), message_type: MessageType | None = None
+    ctx: CtxDep,
+    status_: MessageStatus | None = Query(None, alias="status"),
+    message_type: MessageType | None = None,
 ) -> list[MessageOut]:
     ctx.require(Cap.DRAFT_MESSAGES)
     stmt = select(Message).order_by(Message.created_at.desc()).limit(200)
@@ -204,27 +221,50 @@ async def draft_message(body: DraftIn, ctx: CtxDep) -> dict:
     if template_id is None:
         t = await auto.latest_approved_template(ctx.session, body.message_type)
         if t is None:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No approved template for this message type")
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "No approved template for this message type"
+            )
         template_id = t.id
     else:
         t = await ctx.session.get(MessageTemplate, template_id)
         if t is None or t.message_type != body.message_type:
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Template does not match the message type")
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_CONTENT, "Template does not match the message type"
+            )
     student_ids = await _scoped_students(ctx, body)
     m = Message(
-        message_type=body.message_type, template_id=template_id, title=body.title, student_ids=student_ids,
-        squad_id=body.squad_id, edition_id=body.edition_id, variables=body.variables, created_by_id=ctx.user_id,
+        message_type=body.message_type,
+        template_id=template_id,
+        title=body.title,
+        student_ids=student_ids,
+        squad_id=body.squad_id,
+        edition_id=body.edition_id,
+        variables=body.variables,
+        created_by_id=ctx.user_id,
     )
     ctx.session.add(m)
     await ctx.session.flush()
-    guardian_ids = list(await ctx.session.scalars(
-        select(StudentGuardian.guardian_id).where(StudentGuardian.student_id.in_(student_ids or [uuid.UUID(int=0)]))))
+    guardian_ids = list(
+        await ctx.session.scalars(
+            select(StudentGuardian.guardian_id).where(
+                StudentGuardian.student_id.in_(student_ids or [uuid.UUID(int=0)])
+            )
+        )
+    )
     from app.services.messaging.core import opted_out_count
 
     opted = await opted_out_count(ctx.session, guardian_ids, body.message_type)
-    ctx.audit("message.draft", "message", m.id, context={"type": body.message_type.value, "students": len(student_ids)})
-    return {"message": message_out(m), "families_opted_out_of_category": opted,
-            "is_negative": body.message_type in NEGATIVE_MESSAGE_TYPES}
+    ctx.audit(
+        "message.draft",
+        "message",
+        m.id,
+        context={"type": body.message_type.value, "students": len(student_ids)},
+    )
+    return {
+        "message": message_out(m),
+        "families_opted_out_of_category": opted,
+        "is_negative": body.message_type in NEGATIVE_MESSAGE_TYPES,
+    }
 
 
 async def _message(ctx, message_id: uuid.UUID) -> Message:  # noqa: ANN001
@@ -289,9 +329,17 @@ async def release_message(message_id: uuid.UUID, body: ReleaseIn, ctx: CtxDep) -
     m = await _message(ctx, message_id)
     now = datetime.now(UTC)
     n = await lifecycle.release(ctx.session, ctx.tenant, m, ctx.user_id, now, body.scheduled_for)
-    ctx.audit("message.release", "message", m.id, context={
-        "families": n, "type": m.message_type.value, "scheduled_for": body.scheduled_for,
-        "approver_name": ctx.principal.display_name})
+    ctx.audit(
+        "message.release",
+        "message",
+        m.id,
+        context={
+            "families": n,
+            "type": m.message_type.value,
+            "scheduled_for": body.scheduled_for,
+            "approver_name": ctx.principal.display_name,
+        },
+    )
     ctx.defer("dispatch_message", message_id=m.id)
     return {"message": message_out(m), "deliveries_created": n}
 
@@ -310,15 +358,23 @@ class PersonalSendIn(BaseModel):
 
 
 @router.post("/messages/{message_id}/deliveries/{delivery_id}/sent-personally")
-async def mark_sent_personally(message_id: uuid.UUID, delivery_id: uuid.UUID, body: PersonalSendIn, ctx: CtxDep) -> dict:
+async def mark_sent_personally(
+    message_id: uuid.UUID, delivery_id: uuid.UUID, body: PersonalSendIn, ctx: CtxDep
+) -> dict:
     m = await _message(ctx, message_id)
     if m.status != MessageStatus.MANUAL_HANDOFF:
         raise HTTPException(status.HTTP_409_CONFLICT, "Not a personal hand-off message")
     d = await ctx.session.get(MessageDelivery, delivery_id)
     if d is None or d.message_id != m.id:
         raise not_found()
-    d.status, d.sent_at, d.error = DeliveryStatus.SENT, datetime.now(UTC), f"sent personally: {body.channel_note}"
-    ctx.audit("message.sent_personally", "message", m.id, context={"delivery_id": d.id, "note": body.channel_note})
+    d.status, d.sent_at, d.error = (
+        DeliveryStatus.SENT,
+        datetime.now(UTC),
+        f"sent personally: {body.channel_note}",
+    )
+    ctx.audit(
+        "message.sent_personally", "message", m.id, context={"delivery_id": d.id, "note": body.channel_note}
+    )
     return {"ok": True}
 
 
@@ -334,9 +390,16 @@ async def cancel_message(message_id: uuid.UUID, body: CancelIn, ctx: CtxDep) -> 
     if m.status == MessageStatus.RELEASED:
         ctx.require(Cap.RELEASE_MESSAGES)
     m.status, m.cancelled_reason = MessageStatus.CANCELLED, body.reason
-    for d in (await ctx.session.scalars(select(MessageDelivery).where(
-            MessageDelivery.message_id == m.id,
-            MessageDelivery.status.in_([DeliveryStatus.PENDING, DeliveryStatus.HELD_QUIET_HOURS, DeliveryStatus.THROTTLED])))).all():
+    for d in (
+        await ctx.session.scalars(
+            select(MessageDelivery).where(
+                MessageDelivery.message_id == m.id,
+                MessageDelivery.status.in_(
+                    [DeliveryStatus.PENDING, DeliveryStatus.HELD_QUIET_HOURS, DeliveryStatus.THROTTLED]
+                ),
+            )
+        )
+    ).all():
         d.status = DeliveryStatus.CANCELLED
     ctx.audit("message.cancel", "message", m.id, reason=body.reason)
     return message_out(m)
@@ -358,16 +421,34 @@ async def message_delivery(message_id: uuid.UUID, ctx: CtxDep) -> dict:
     items = []
     for d, name in rows:
         counts[d.status.value] = counts.get(d.status.value, 0) + 1
-        items.append({
-            "delivery_id": d.id, "guardian_id": d.guardian_id, "guardian_name": name, "student_ids": d.student_ids,
-            "language": d.language.value, "channel_planned": d.channel_planned.value,
-            "channel_used": d.channel_used.value if d.channel_used else None, "channels_attempted": d.channels_attempted,
-            "status": d.status.value, "template_version": d.template_version, "error": d.error,
-            "hold_until": d.hold_until, "sent_at": d.sent_at, "delivered_at": d.delivered_at, "opened_at": d.opened_at,
-            "subject": d.rendered_subject, "body": d.rendered_body,
-        })
-    return {"message": message_out(m), "released_by_id": m.released_by_id, "released_at": m.released_at,
-            "counts": counts, "deliveries": items}
+        items.append(
+            {
+                "delivery_id": d.id,
+                "guardian_id": d.guardian_id,
+                "guardian_name": name,
+                "student_ids": d.student_ids,
+                "language": d.language.value,
+                "channel_planned": d.channel_planned.value,
+                "channel_used": d.channel_used.value if d.channel_used else None,
+                "channels_attempted": d.channels_attempted,
+                "status": d.status.value,
+                "template_version": d.template_version,
+                "error": d.error,
+                "hold_until": d.hold_until,
+                "sent_at": d.sent_at,
+                "delivered_at": d.delivered_at,
+                "opened_at": d.opened_at,
+                "subject": d.rendered_subject,
+                "body": d.rendered_body,
+            }
+        )
+    return {
+        "message": message_out(m),
+        "released_by_id": m.released_by_id,
+        "released_at": m.released_at,
+        "counts": counts,
+        "deliveries": items,
+    }
 
 
 @router.get("/messages/{message_id}/delivery.csv")
@@ -375,15 +456,45 @@ async def message_delivery_csv(message_id: uuid.UUID, ctx: CtxDep) -> Response:
     data = await message_delivery(message_id, ctx)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["message_id", "released_by_id", "released_at", "guardian", "language", "template_version",
-                "channel_used", "status", "sent_at", "delivered_at", "opened_at", "error"])
+    w.writerow(
+        [
+            "message_id",
+            "released_by_id",
+            "released_at",
+            "guardian",
+            "language",
+            "template_version",
+            "channel_used",
+            "status",
+            "sent_at",
+            "delivered_at",
+            "opened_at",
+            "error",
+        ]
+    )
     for d in data["deliveries"]:
-        w.writerow([message_id, data["released_by_id"], data["released_at"], d["guardian_name"], d["language"],
-                    d["template_version"], d["channel_used"], d["status"], d["sent_at"], d["delivered_at"],
-                    d["opened_at"], d["error"]])
+        w.writerow(
+            [
+                message_id,
+                data["released_by_id"],
+                data["released_at"],
+                d["guardian_name"],
+                d["language"],
+                d["template_version"],
+                d["channel_used"],
+                d["status"],
+                d["sent_at"],
+                d["delivered_at"],
+                d["opened_at"],
+                d["error"],
+            ]
+        )
     ctx.audit("message.delivery_export", "message", message_id)
-    return Response(buf.getvalue(), media_type="text/csv",
-                    headers={"Content-Disposition": f'attachment; filename="delivery-{message_id}.csv"'})
+    return Response(
+        buf.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="delivery-{message_id}.csv"'},
+    )
 
 
 # ---------------- Emergency broadcast ----------------
@@ -407,24 +518,52 @@ async def emergency_broadcast(body: EmergencyIn, ctx: CtxDep) -> dict:
     if template is None:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No approved emergency template")
     if body.whole_school:
-        ids = list(await ctx.session.scalars(select(Student.id).where(Student.enrolment_status == EnrolmentStatus.ACTIVE)))
+        ids = list(
+            await ctx.session.scalars(
+                select(Student.id).where(Student.enrolment_status == EnrolmentStatus.ACTIVE)
+            )
+        )
     else:
-        ids = list(await ctx.session.scalars(select(SquadMembership.student_id).where(
-            SquadMembership.squad_id.in_(body.squad_ids or [uuid.UUID(int=0)]),
-            SquadMembership.status == MembershipStatus.ACTIVE)))
+        ids = list(
+            await ctx.session.scalars(
+                select(SquadMembership.student_id).where(
+                    SquadMembership.squad_id.in_(body.squad_ids or [uuid.UUID(int=0)]),
+                    SquadMembership.status == MembershipStatus.ACTIVE,
+                )
+            )
+        )
         if body.edition_id:
             from app.models import SquadTargetEdition
-            squads = list(await ctx.session.scalars(select(SquadTargetEdition.squad_id).where(
-                SquadTargetEdition.edition_id == body.edition_id)))
-            ids += list(await ctx.session.scalars(select(SquadMembership.student_id).where(
-                SquadMembership.squad_id.in_(squads or [uuid.UUID(int=0)]),
-                SquadMembership.status == MembershipStatus.ACTIVE)))
+
+            squads = list(
+                await ctx.session.scalars(
+                    select(SquadTargetEdition.squad_id).where(
+                        SquadTargetEdition.edition_id == body.edition_id
+                    )
+                )
+            )
+            ids += list(
+                await ctx.session.scalars(
+                    select(SquadMembership.student_id).where(
+                        SquadMembership.squad_id.in_(squads or [uuid.UUID(int=0)]),
+                        SquadMembership.status == MembershipStatus.ACTIVE,
+                    )
+                )
+            )
     ids = list(dict.fromkeys(ids))
     if not ids:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "No recipients selected")
-    m = Message(message_type=MessageType.EMERGENCY, template_id=template.id, title=f"EMERGENCY: {body.title}",
-                student_ids=ids, edition_id=body.edition_id, is_emergency=True, emergency_reason=body.reason,
-                variables={"notice_en": body.notice_en, "notice_ar": body.notice_ar}, created_by_id=ctx.user_id)
+    m = Message(
+        message_type=MessageType.EMERGENCY,
+        template_id=template.id,
+        title=f"EMERGENCY: {body.title}",
+        student_ids=ids,
+        edition_id=body.edition_id,
+        is_emergency=True,
+        emergency_reason=body.reason,
+        variables={"notice_en": body.notice_en, "notice_ar": body.notice_ar},
+        created_by_id=ctx.user_id,
+    )
     ctx.session.add(m)
     await ctx.session.flush()
     now = datetime.now(UTC)
@@ -435,8 +574,13 @@ async def emergency_broadcast(body: EmergencyIn, ctx: CtxDep) -> dict:
         ctx.audit("message.emergency_preview", "message", m.id, reason=body.reason)
         return {"preview": preview, "released": False}
     n = await lifecycle.release(ctx.session, ctx.tenant, m, ctx.user_id, now)
-    ctx.audit("message.emergency_broadcast", "message", m.id, reason=body.reason,
-              context={"families": n, "approver_name": ctx.principal.display_name})
+    ctx.audit(
+        "message.emergency_broadcast",
+        "message",
+        m.id,
+        reason=body.reason,
+        context={"families": n, "approver_name": ctx.principal.display_name},
+    )
     ctx.defer("dispatch_message", message_id=m.id)
     return {"preview": preview, "released": True, "message": message_out(m), "deliveries_created": n}
 

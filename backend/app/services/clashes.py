@@ -46,7 +46,9 @@ async def clashes_for_edition(session: AsyncSession, edition: CompetitionEdition
         )
 
     squad_ids = list(
-        await session.scalars(select(SquadTargetEdition.squad_id).where(SquadTargetEdition.edition_id == edition.id))
+        await session.scalars(
+            select(SquadTargetEdition.squad_id).where(SquadTargetEdition.edition_id == edition.id)
+        )
     )
     if squad_ids:
         rows = (
@@ -54,7 +56,9 @@ async def clashes_for_edition(session: AsyncSession, edition: CompetitionEdition
                 select(SquadTargetEdition.squad_id, Squad.name, CompetitionEdition)
                 .join(CompetitionEdition, CompetitionEdition.id == SquadTargetEdition.edition_id)
                 .join(Squad, Squad.id == SquadTargetEdition.squad_id)
-                .where(SquadTargetEdition.squad_id.in_(squad_ids), SquadTargetEdition.edition_id != edition.id)
+                .where(
+                    SquadTargetEdition.squad_id.in_(squad_ids), SquadTargetEdition.edition_id != edition.id
+                )
             )
         ).all()
         for squad_id, squad_name, other in rows:
@@ -73,7 +77,10 @@ async def clashes_for_edition(session: AsyncSession, edition: CompetitionEdition
 
 
 async def exam_clash_for_year(
-    session: AsyncSession, edition: CompetitionEdition, year_group: int, windows: list[ExamWindow] | None = None
+    session: AsyncSession,
+    edition: CompetitionEdition,
+    year_group: int,
+    windows: list[ExamWindow] | None = None,
 ) -> ExamWindow | None:
     if windows is None:
         windows = list((await session.scalars(select(ExamWindow))).all())

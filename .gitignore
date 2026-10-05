@@ -27,3 +27,6 @@ frontend/coverage/
 
 # Backups produced by scripts
 backups/
+
+# Local Redis snapshots
+dump.rdb

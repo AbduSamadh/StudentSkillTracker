@@ -25,7 +25,10 @@ router = APIRouter(prefix="/skills", tags=["skills"])
 
 @router.get("", response_model=list[SkillOut])
 async def list_skills(
-    ctx: CtxDep, domain: str | None = None, q: str | None = Query(None, max_length=80), include_inactive: bool = False
+    ctx: CtxDep,
+    domain: str | None = None,
+    q: str | None = Query(None, max_length=80),
+    include_inactive: bool = False,
 ) -> list[SkillOut]:
     """The taxonomy."""
     stmt = select(Skill).order_by(Skill.code)
@@ -59,7 +62,9 @@ async def update_skill(skill_id: uuid.UUID, body: SkillIn, ctx: CtxDep) -> Skill
     if s is None:
         raise not_found()
     if body.code != s.code:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Skill codes are stable and cannot be changed")
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_CONTENT, "Skill codes are stable and cannot be changed"
+        )
     for k, v in body.model_dump(exclude={"code"}).items():
         setattr(s, k, v)
     ctx.audit("skill.update", "skill", s.id)
@@ -88,8 +93,17 @@ async def grant_award(body: AwardIn, ctx: CtxDep, response: Response) -> AwardOu
         response.status_code = 200
         response.headers["Idempotent-Replay"] = "true"
     else:
-        ctx.audit("award.grant", "student", body.student_id,
-                  context={"award_id": award.id, "skill_id": body.skill_id, "level": body.level, "source": body.source})
+        ctx.audit(
+            "award.grant",
+            "student",
+            body.student_id,
+            context={
+                "award_id": award.id,
+                "skill_id": body.skill_id,
+                "level": body.level,
+                "source": body.source,
+            },
+        )
         ctx.defer("deliver_webhooks")
     return award_out(award)
 
@@ -108,12 +122,28 @@ async def quick_tag(body: QuickTagIn, ctx: CtxDep) -> list[AwardOut]:
         await ensure_student_in_scope(ctx.session, ctx.principal, sid)
         key = f"{body.idempotency_key}:{sid}" if body.idempotency_key else None
         award, created = await create_verified(
-            ctx.session, student_id=sid, skill_id=body.skill_id, level=body.level, source=AwardSource.TEACHER,
-            verified_by=ctx.user_id, evidence_note=body.evidence_note, session_id=body.session_id, idempotency_key=key,
+            ctx.session,
+            student_id=sid,
+            skill_id=body.skill_id,
+            level=body.level,
+            source=AwardSource.TEACHER,
+            verified_by=ctx.user_id,
+            evidence_note=body.evidence_note,
+            session_id=body.session_id,
+            idempotency_key=key,
         )
         if created:
-            ctx.audit("award.grant", "student", sid, context={"award_id": award.id, "skill_id": body.skill_id,
-                                                             "level": body.level, "via": "quick_tag"})
+            ctx.audit(
+                "award.grant",
+                "student",
+                sid,
+                context={
+                    "award_id": award.id,
+                    "skill_id": body.skill_id,
+                    "level": body.level,
+                    "via": "quick_tag",
+                },
+            )
         out.append(award_out(award))
     ctx.defer("deliver_webhooks")
     return out
@@ -121,7 +151,9 @@ async def quick_tag(body: QuickTagIn, ctx: CtxDep) -> list[AwardOut]:
 
 @router.get("/awards/proposed", response_model=list[AwardOut])
 async def proposed_awards(
-    ctx: CtxDep, squad_id: uuid.UUID | None = None, result_id: uuid.UUID | None = None,
+    ctx: CtxDep,
+    squad_id: uuid.UUID | None = None,
+    result_id: uuid.UUID | None = None,
     student_id: uuid.UUID | None = None,
 ) -> list[AwardOut]:
     """Batch-confirm screen: proposed awards from rubric imports and self-assessments."""
@@ -132,15 +164,32 @@ async def proposed_awards(
     )
     if squad_id:
         ensure_squad_in_scope(ctx.principal, squad_id)
-        stmt = stmt.where(SkillAward.student_id.in_(
-            select(SquadMembership.student_id).where(SquadMembership.squad_id == squad_id,
-                                                     SquadMembership.status == MembershipStatus.ACTIVE)))
+        stmt = stmt.where(
+            SkillAward.student_id.in_(
+                select(SquadMembership.student_id).where(
+                    SquadMembership.squad_id == squad_id, SquadMembership.status == MembershipStatus.ACTIVE
+                )
+            )
+        )
     if result_id:
         stmt = stmt.where(SkillAward.result_id == result_id)
     if student_id:
         stmt = stmt.where(SkillAward.student_id == student_id)
     rows = (await ctx.session.scalars(stmt.order_by(SkillAward.created_at))).all()
-    return [award_out(a) for a in rows]
+    names = {
+        st.id: st.display_name
+        for st in (
+            await ctx.session.scalars(
+                select(Student).where(Student.id.in_({a.student_id for a in rows} or {uuid.UUID(int=0)}))
+            )
+        ).all()
+    }
+    out = []
+    for a in rows:
+        o = award_out(a)
+        o.student_name = names.get(a.student_id)
+        out.append(o)
+    return out
 
 
 @router.post("/awards/bulk-confirm")
@@ -148,7 +197,9 @@ async def bulk_confirm(body: BulkConfirmIn, ctx: CtxDep) -> dict:
     """A named teacher confirms (or rejects) proposed awards in one batch."""
     ctx.require(Cap.VERIFY_SKILLS)
     ids = list(dict.fromkeys(body.confirm + body.reject))
-    awards = {a.id: a for a in (await ctx.session.scalars(select(SkillAward).where(SkillAward.id.in_(ids)))).all()}
+    awards = {
+        a.id: a for a in (await ctx.session.scalars(select(SkillAward).where(SkillAward.id.in_(ids)))).all()
+    }
     for aid in ids:
         a = awards.get(aid)
         if a is None:
@@ -161,8 +212,12 @@ async def bulk_confirm(body: BulkConfirmIn, ctx: CtxDep) -> dict:
             raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "Levels are 1–4")
         await confirm(ctx.session, awards[aid], ctx.user_id, lvl)
         confirmed.append(aid)
-        ctx.audit("award.confirm", "student", awards[aid].student_id, context={"award_id": aid, "level": awards[aid].level,
-                                                                              "source": awards[aid].source.value})
+        ctx.audit(
+            "award.confirm",
+            "student",
+            awards[aid].student_id,
+            context={"award_id": aid, "level": awards[aid].level, "source": awards[aid].source.value},
+        )
     for aid in body.reject:
         a = awards[aid]
         if a.status != AwardStatus.PROPOSED:
@@ -185,7 +240,12 @@ async def revoke_award(award_id: uuid.UUID, body: RevokeIn, ctx: CtxDep) -> Awar
     await ensure_student_in_scope(ctx.session, ctx.principal, a.student_id)
     if a.status == AwardStatus.REVOKED:
         return award_out(a)
-    a.status, a.revoked_by_id, a.revoked_at, a.revoke_reason = AwardStatus.REVOKED, ctx.user_id, datetime.now(UTC), body.reason
+    a.status, a.revoked_by_id, a.revoked_at, a.revoke_reason = (
+        AwardStatus.REVOKED,
+        ctx.user_id,
+        datetime.now(UTC),
+        body.reason,
+    )
     ctx.audit("award.revoke", "student", a.student_id, reason=body.reason, context={"award_id": a.id})
     return award_out(a)
 
@@ -197,39 +257,63 @@ async def coverage(ctx: CtxDep) -> dict:
     ctx.require(Cap.VIEW_SCHOOL_ANALYTICS)
     settings = ctx.settings
     skills = (await ctx.session.scalars(select(Skill).where(Skill.is_active.is_(True)))).all()
-    active_students = await ctx.session.scalar(
-        select(func.count()).select_from(Student).where(Student.enrolment_status == EnrolmentStatus.ACTIVE)
-    ) or 0
+    active_students = (
+        await ctx.session.scalar(
+            select(func.count())
+            .select_from(Student)
+            .where(Student.enrolment_status == EnrolmentStatus.ACTIVE)
+        )
+        or 0
+    )
     holders = dict(
         (
             await ctx.session.execute(
                 select(SkillAward.skill_id, func.count(func.distinct(SkillAward.student_id)))
                 .join(Student, Student.id == SkillAward.student_id)
-                .where(SkillAward.status == AwardStatus.VERIFIED, Student.enrolment_status == EnrolmentStatus.ACTIVE)
+                .where(
+                    SkillAward.status == AwardStatus.VERIFIED,
+                    Student.enrolment_status == EnrolmentStatus.ACTIVE,
+                )
                 .group_by(SkillAward.skill_id)
             )
         ).all()
     )
     by_domain: dict[str, dict] = {}
     for s in skills:
-        d = by_domain.setdefault(s.domain, {"domain": s.domain, "skills_total": 0, "skills_evidenced": 0, "skills": []})
+        d = by_domain.setdefault(
+            s.domain, {"domain": s.domain, "skills_total": 0, "skills_evidenced": 0, "skills": []}
+        )
         d["skills_total"] += 1
         n = holders.get(s.id, 0)
         if n:
             d["skills_evidenced"] += 1
-        d["skills"].append({"code": s.code, "name": s.name,
-                            "holders": Figure.count(n, settings, label=s.code).as_dict()})
+        d["skills"].append(
+            {"code": s.code, "name": s.name, "holders": Figure.count(n, settings, label=s.code).as_dict()}
+        )
     total = len(skills)
     evidenced = sum(1 for s in skills if holders.get(s.id))
     return {
-        "taxonomy_coverage": Figure.percent(evidenced, total, settings, label="skills with any verified evidence",
-                                            denominator_label="active skills in the taxonomy",
-                                            apply_base_rule=False).as_dict(),
+        "taxonomy_coverage": Figure.percent(
+            evidenced,
+            total,
+            settings,
+            label="skills with any verified evidence",
+            denominator_label="active skills in the taxonomy",
+            apply_base_rule=False,
+        ).as_dict(),
         "active_students": active_students,
         "domains": [
-            {**d, "coverage": Figure.percent(d["skills_evidenced"], d["skills_total"], settings,
-                                             label=f"{d['domain']} skills evidenced",
-                                             denominator_label=f"{d['domain']} skills", apply_base_rule=False).as_dict()}
+            {
+                **d,
+                "coverage": Figure.percent(
+                    d["skills_evidenced"],
+                    d["skills_total"],
+                    settings,
+                    label=f"{d['domain']} skills evidenced",
+                    denominator_label=f"{d['domain']} skills",
+                    apply_base_rule=False,
+                ).as_dict(),
+            }
             for d in sorted(by_domain.values(), key=lambda d: d["domain"])
         ],
     }
@@ -245,9 +329,14 @@ async def self_assess(body: AwardIn, ctx: CtxDep) -> AwardOut:
     if Role.STUDENT not in ctx.principal.roles:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Students only")
     a = SkillAward(
-        student_id=body.student_id, skill_id=body.skill_id, level=body.level,
-        awarded_on=body.awarded_on or datetime.now(UTC).date(), source=AwardSource.SELF,
-        status=AwardStatus.PROPOSED, evidence_note=body.evidence_note, proposed_by_id=ctx.user_id,
+        student_id=body.student_id,
+        skill_id=body.skill_id,
+        level=body.level,
+        awarded_on=body.awarded_on or datetime.now(UTC).date(),
+        source=AwardSource.SELF,
+        status=AwardStatus.PROPOSED,
+        evidence_note=body.evidence_note,
+        proposed_by_id=ctx.user_id,
         idempotency_key=body.idempotency_key,
     )
     ctx.session.add(a)
@@ -255,5 +344,3 @@ async def self_assess(body: AwardIn, ctx: CtxDep) -> AwardOut:
     await ctx.session.refresh(a, ["skill"])
     ctx.audit("award.self_assess", "student", body.student_id, context={"award_id": a.id})
     return award_out(a)
-
-

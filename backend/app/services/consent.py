@@ -35,11 +35,18 @@ def _age(dob: date | None, today: date) -> int | None:
 
 
 async def latest(
-    session: AsyncSession, student_id: uuid.UUID, purpose: ConsentPurpose, edition_id: uuid.UUID | None = None,
+    session: AsyncSession,
+    student_id: uuid.UUID,
+    purpose: ConsentPurpose,
+    edition_id: uuid.UUID | None = None,
     guardian_id: uuid.UUID | None = None,
 ) -> Consent | None:
     stmt = select(Consent).where(Consent.student_id == student_id, Consent.purpose == purpose)
-    stmt = stmt.where(Consent.edition_id == edition_id) if edition_id else stmt.where(Consent.edition_id.is_(None))
+    stmt = (
+        stmt.where(Consent.edition_id == edition_id)
+        if edition_id
+        else stmt.where(Consent.edition_id.is_(None))
+    )
     if guardian_id:
         stmt = stmt.where(Consent.guardian_id == guardian_id)
     return await session.scalar(stmt.order_by(Consent.decided_at.desc()).limit(1))
@@ -50,7 +57,11 @@ def is_active(c: Consent | None) -> bool:
 
 
 async def has_consent(
-    session: AsyncSession, student: Student, purpose: ConsentPurpose, *, edition_id: uuid.UUID | None = None,
+    session: AsyncSession,
+    student: Student,
+    purpose: ConsentPurpose,
+    *,
+    edition_id: uuid.UUID | None = None,
     guardian_id: uuid.UUID | None = None,
 ) -> bool:
     c = await latest(session, student.id, purpose, edition_id, guardian_id)
@@ -62,7 +73,9 @@ async def has_consent(
     return DEFAULT_WITHOUT_RECORD.get(purpose, False)
 
 
-async def communications_blocked(session: AsyncSession, student_id: uuid.UUID, guardian_id: uuid.UUID) -> bool:
+async def communications_blocked(
+    session: AsyncSession, student_id: uuid.UUID, guardian_id: uuid.UUID
+) -> bool:
     """True if this guardian has declined or withdrawn communications consent for the child."""
     c = await latest(session, student_id, ConsentPurpose.COMMUNICATIONS, guardian_id=guardian_id)
     return c is not None and not is_active(c)
@@ -73,7 +86,9 @@ async def media_consented_ids(session: AsyncSession, student_ids: list[uuid.UUID
     if not student_ids:
         return set()
     rows = await session.execute(
-        text("SELECT student_id FROM student_media_consent WHERE has_media_consent AND student_id = ANY(:ids)"),
+        text(
+            "SELECT student_id FROM student_media_consent WHERE has_media_consent AND student_id = ANY(:ids)"
+        ),
         {"ids": list(student_ids)},
     )
     return {r[0] for r in rows}

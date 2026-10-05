@@ -83,8 +83,11 @@ async def get_squad(squad_id: uuid.UUID, ctx: CtxDep) -> dict:
         await ctx.session.execute(
             select(User.id, User.display_name)
             .join(RoleAssignment, RoleAssignment.user_id == User.id)
-            .where(RoleAssignment.role == Role.TEACHER, RoleAssignment.scope_type == ScopeType.SQUAD,
-                   RoleAssignment.scope_id == squad.id)
+            .where(
+                RoleAssignment.role == Role.TEACHER,
+                RoleAssignment.scope_type == ScopeType.SQUAD,
+                RoleAssignment.scope_id == squad.id,
+            )
         )
     ).all()
     editions = (
@@ -99,13 +102,26 @@ async def get_squad(squad_id: uuid.UUID, ctx: CtxDep) -> dict:
     return {
         **SquadOut.model_validate(squad).model_dump(),
         "members": [
-            {**MembershipOut.model_validate(m).model_dump(), "name": s.display_name, "year_group": s.year_group}
+            {
+                **MembershipOut.model_validate(m).model_dump(),
+                "name": s.display_name,
+                "year_group": s.year_group,
+            }
             for m, s in rows
         ],
-        "coaches": [{"user_id": uid, "name": name, "is_lead": uid == squad.lead_coach_user_id} for uid, name in coaches],
+        "coaches": [
+            {"user_id": uid, "name": name, "is_lead": uid == squad.lead_coach_user_id}
+            for uid, name in coaches
+        ],
         "target_editions": [
-            {"edition_id": e.id, "name": e.name, "competition_name": e.competition.name, "event_starts": e.event_starts,
-             "event_ends": e.event_ends, "tier": e.tier.value}
+            {
+                "edition_id": e.id,
+                "name": e.name,
+                "competition_name": e.competition.name,
+                "event_starts": e.event_starts,
+                "event_ends": e.event_ends,
+                "tier": e.tier.value,
+            }
             for e in editions
         ],
     }
@@ -119,7 +135,9 @@ async def add_member(squad_id: uuid.UUID, body: MembershipIn, ctx: CtxDep) -> Me
     if squad is None or student is None:
         raise not_found()
     m = await ctx.session.scalar(
-        select(SquadMembership).where(SquadMembership.squad_id == squad_id, SquadMembership.student_id == student.id)
+        select(SquadMembership).where(
+            SquadMembership.squad_id == squad_id, SquadMembership.student_id == student.id
+        )
     )
     newly_selected = m is None or m.status == MembershipStatus.WITHDRAWN
     if m is None:
@@ -136,7 +154,9 @@ async def add_member(squad_id: uuid.UUID, body: MembershipIn, ctx: CtxDep) -> Me
 
 
 @router.patch("/{squad_id}/members/{membership_id}", response_model=MembershipOut)
-async def update_member(squad_id: uuid.UUID, membership_id: uuid.UUID, body: MembershipPatch, ctx: CtxDep) -> MembershipOut:
+async def update_member(
+    squad_id: uuid.UUID, membership_id: uuid.UUID, body: MembershipPatch, ctx: CtxDep
+) -> MembershipOut:
     ensure_can_write_squad(ctx.principal, squad_id, Cap.MANAGE_SQUAD_MEMBERS)
     m = await ctx.session.get(SquadMembership, membership_id)
     if m is None or m.squad_id != squad_id:
@@ -151,7 +171,9 @@ async def update_member(squad_id: uuid.UUID, membership_id: uuid.UUID, body: Mem
         m.status = MembershipStatus.WITHDRAWN
         m.withdrawn_on = datetime.now(UTC).date()
         m.withdrawal_reason = body.withdrawal_reason
-    ctx.audit("squad.member_update", "student", m.student_id, context={"squad_id": squad_id, **body.model_dump()})
+    ctx.audit(
+        "squad.member_update", "student", m.student_id, context={"squad_id": squad_id, **body.model_dump()}
+    )
     return MembershipOut.model_validate(m)
 
 
@@ -166,13 +188,22 @@ async def _assign_coach(ctx, squad_id: uuid.UUID, user_id: uuid.UUID) -> None:  
         raise not_found("User not found")
     exists = await ctx.session.scalar(
         select(RoleAssignment).where(
-            RoleAssignment.user_id == user_id, RoleAssignment.role == Role.TEACHER,
-            RoleAssignment.scope_type == ScopeType.SQUAD, RoleAssignment.scope_id == squad_id,
+            RoleAssignment.user_id == user_id,
+            RoleAssignment.role == Role.TEACHER,
+            RoleAssignment.scope_type == ScopeType.SQUAD,
+            RoleAssignment.scope_id == squad_id,
         )
     )
     if exists is None:
-        ctx.session.add(RoleAssignment(user_id=user_id, role=Role.TEACHER, scope_type=ScopeType.SQUAD,
-                                       scope_id=squad_id, granted_by_id=ctx.user_id))
+        ctx.session.add(
+            RoleAssignment(
+                user_id=user_id,
+                role=Role.TEACHER,
+                scope_type=ScopeType.SQUAD,
+                scope_id=squad_id,
+                granted_by_id=ctx.user_id,
+            )
+        )
 
 
 @router.post("/{squad_id}/coaches", status_code=201)
@@ -191,8 +222,10 @@ async def remove_coach(squad_id: uuid.UUID, user_id: uuid.UUID, ctx: CtxDep) -> 
     ctx.require(Cap.MANAGE_SQUADS)
     await ctx.session.execute(
         delete(RoleAssignment).where(
-            RoleAssignment.user_id == user_id, RoleAssignment.role == Role.TEACHER,
-            RoleAssignment.scope_type == ScopeType.SQUAD, RoleAssignment.scope_id == squad_id,
+            RoleAssignment.user_id == user_id,
+            RoleAssignment.role == Role.TEACHER,
+            RoleAssignment.scope_type == ScopeType.SQUAD,
+            RoleAssignment.scope_id == squad_id,
         )
     )
     ctx.audit("squad.coach_remove", "squad", squad_id, context={"user_id": user_id})
@@ -209,8 +242,9 @@ async def add_target_edition(squad_id: uuid.UUID, body: TargetIn, ctx: CtxDep) -
     if await ctx.session.get(CompetitionEdition, body.edition_id) is None:
         raise not_found("Edition not found")
     exists = await ctx.session.scalar(
-        select(SquadTargetEdition).where(SquadTargetEdition.squad_id == squad_id,
-                                         SquadTargetEdition.edition_id == body.edition_id)
+        select(SquadTargetEdition).where(
+            SquadTargetEdition.squad_id == squad_id, SquadTargetEdition.edition_id == body.edition_id
+        )
     )
     if exists is None:
         ctx.session.add(SquadTargetEdition(squad_id=squad_id, edition_id=body.edition_id))
@@ -222,8 +256,9 @@ async def add_target_edition(squad_id: uuid.UUID, body: TargetIn, ctx: CtxDep) -
 async def remove_target_edition(squad_id: uuid.UUID, edition_id: uuid.UUID, ctx: CtxDep) -> None:
     ctx.require(Cap.MANAGE_SQUADS)
     await ctx.session.execute(
-        delete(SquadTargetEdition).where(SquadTargetEdition.squad_id == squad_id,
-                                         SquadTargetEdition.edition_id == edition_id)
+        delete(SquadTargetEdition).where(
+            SquadTargetEdition.squad_id == squad_id, SquadTargetEdition.edition_id == edition_id
+        )
     )
     ctx.audit("squad.edition_untarget", "squad", squad_id, context={"edition_id": edition_id})
 
