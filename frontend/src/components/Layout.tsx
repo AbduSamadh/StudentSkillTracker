@@ -50,7 +50,7 @@ function SyncStatus() {
         {problems.length > 0 && <Badge tone="red">{problems.length}</Badge>}
       </button>
       {open && (
-        <div className="absolute end-0 z-40 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
+        <div className="absolute inset-e-0 z-40 mt-2 w-80 rounded-xl border border-slate-200 bg-white p-3 shadow-lg">
           <div className="mb-2 flex items-center justify-between">
             <h2 className="text-sm">{t('sync.title')}</h2>
             <Button size="sm" variant="secondary" onClick={() => void flush()}>
@@ -69,7 +69,7 @@ function SyncStatus() {
                 {i.status !== 'pending' && (
                   <>
                     <p className="mt-1 text-red-700">{i.status === 'conflict' ? t('sync.conflict') : t('sync.failed')}</p>
-                    {i.error && <p className="mt-1 break-words text-slate-600">{i.error}</p>}
+                    {i.error && <p className="mt-1 wrap-break-word text-slate-600">{i.error}</p>}
                     <div className="mt-1 flex gap-2">
                       <Button size="sm" variant="secondary" onClick={() => void retry(i.id)}>
                         {t('common.retry')}
@@ -109,11 +109,11 @@ export function Shell({ nav, children }: { nav: NavItem[]; children?: ReactNode 
   const items = nav.filter((n) => n.show)
   return (
     <div className="min-h-screen">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:start-2 focus:top-2 focus:z-50 focus:rounded focus:bg-white focus:p-2">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:inset-s-2 focus:top-2 focus:z-50 focus:rounded-sm focus:bg-white focus:p-2">
         {t('common.skipToContent')}
       </a>
       <OfflineBanner />
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2">
           <button className="rounded-lg p-2 lg:hidden" aria-label={t('nav.menu')} aria-expanded={menuOpen} onClick={() => setMenuOpen((o) => !o)}>
             <span aria-hidden>☰</span>

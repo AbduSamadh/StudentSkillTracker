@@ -15,7 +15,7 @@ interface TokenOut {
 
 export function AuthFrame({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="grid min-h-screen place-items-center bg-gradient-to-b from-brand-soft to-slate-50 p-4">
+    <div className="grid min-h-screen place-items-center bg-linear-to-b from-brand-soft to-slate-50 p-4">
       <div className="w-full max-w-md">
         <div className="mb-4 flex justify-end">
           <LanguageToggle />
@@ -74,7 +74,7 @@ function MfaForm({ enrol, verify }: { enrol: { secret: string; otpauth_uri: stri
         <div className="space-y-2 text-sm">
           <p>{t('auth.enrolPrompt')}</p>
           <p className="font-medium">{t('auth.setupKey')}</p>
-          <code className="block select-all break-all rounded bg-slate-100 p-2 font-mono text-base" dir="ltr">
+          <code className="block select-all break-all rounded-sm bg-slate-100 p-2 font-mono text-base" dir="ltr">
             {enrol.secret}
           </code>
           <a className="text-brand underline" href={enrol.otpauth_uri}>

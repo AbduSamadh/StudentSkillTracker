@@ -37,8 +37,15 @@ export async function list(): Promise<QueuedWrite[]> {
 }
 
 export async function enqueue(w: Pick<QueuedWrite, 'method' | 'path' | 'body' | 'label'>): Promise<QueuedWrite> {
-  const item: QueuedWrite = { ...w, id: newId(), createdAt: Date.now(), attempts: 0, status: 'pending' }
-  await (await db()).put('outbox', item)
+  // createdAt is the replay order, so it must be strictly increasing even when two writes land in
+  // the same millisecond. Reading the last entry and adding the new one in one readwrite
+  // transaction keeps that true across tabs too.
+  const tx = (await db()).transaction('outbox', 'readwrite')
+  const last = await tx.store.index('byCreated').openCursor(null, 'prev')
+  const createdAt = Math.max(Date.now(), (last?.value.createdAt ?? 0) + 1)
+  const item: QueuedWrite = { ...w, id: newId(), createdAt, attempts: 0, status: 'pending' }
+  await tx.store.put(item)
+  await tx.done
   notify()
   return item
 }

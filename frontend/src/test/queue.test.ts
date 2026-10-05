@@ -33,25 +33,29 @@ describe('offline outbox', () => {
   })
 
   it('stops at the first network failure so later writes never overtake earlier ones', async () => {
-    let n = 0
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      n += 1
-      if (n === 2) throw new TypeError('Failed to fetch')
-      return ok()
-    })
-    await (await db()).clear('outbox')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(ok())
     await capture({ method: 'POST', path: '/a', body: {}, label: 'a' })
-    // second capture: 'b' fails on network, 'c' must not be attempted before it
-    vi.spyOn(globalThis, 'fetch').mockImplementationOnce(async () => {
-      throw new TypeError('Failed to fetch')
-    })
+    fetchSpy.mockRejectedValue(new TypeError('Failed to fetch'))
     await capture({ method: 'POST', path: '/b', body: {}, label: 'b' })
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
-      throw new TypeError('Failed to fetch')
-    })
+    fetchSpy.mockClear()
+    // 'b' is retried first and fails again, so 'c' must not be attempted before it
     await capture({ method: 'POST', path: '/c', body: {}, label: 'c' })
-    expect(fetchSpy).toHaveBeenCalledTimes(1) // only 'b' was retried, then the flush stopped
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
+    expect(String(fetchSpy.mock.calls[0][0])).toBe('/api/v1/b')
     expect((await list()).map((i) => i.label)).toEqual(['b', 'c'])
+  })
+
+  it('replays writes captured in the same millisecond in the order they were made', async () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('Failed to fetch'))
+    const labels = Array.from({ length: 12 }, (_, i) => `w${i}`)
+    for (const label of labels) await capture({ method: 'POST', path: `/${label}`, body: {}, label })
+    expect((await list()).map((i) => i.label)).toEqual(labels)
+
+    fetchSpy.mockClear()
+    fetchSpy.mockImplementation(async () => ok())
+    await flush()
+    expect(fetchSpy.mock.calls.map((c) => String(c[0]))).toEqual(labels.map((l) => `/api/v1/${l}`))
   })
 
   it('marks a conflict for review instead of retrying forever', async () => {

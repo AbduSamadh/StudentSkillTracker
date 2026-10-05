@@ -373,7 +373,7 @@ export function MessageDetailPage() {
                       {d.guardian_name} <span className="text-xs text-slate-500">({d.language})</span>
                       <details className="text-xs">
                         <summary className="cursor-pointer text-slate-500">{d.subject}</summary>
-                        <pre className="whitespace-pre-wrap font-sans [overflow-wrap:anywhere]" dir={d.language === 'ar' ? 'rtl' : 'ltr'}>
+                        <pre className="whitespace-pre-wrap font-sans wrap-anywhere" dir={d.language === 'ar' ? 'rtl' : 'ltr'}>
                           {d.body}
                         </pre>
                       </details>
@@ -437,7 +437,7 @@ export function PreviewPanel({ p }: { p: Preview }) {
               {s.guardian_name} · {s.children.join(', ')} · {s.channels.map((c) => t(`channels.${c}` as 'channels.email')).join(' → ')}
             </div>
             <div className="font-semibold">{s.subject}</div>
-            <pre className="mt-1 whitespace-pre-wrap font-sans [overflow-wrap:anywhere]">{s.body}</pre>
+            <pre className="mt-1 whitespace-pre-wrap font-sans wrap-anywhere">{s.body}</pre>
             <div className="mt-2 flex flex-wrap gap-1 text-xs">
               <Badge tone={s.would_be === 'pending' ? 'green' : 'amber'}>{t('messages.wouldBe', { status: t(`deliveryStatus.${s.would_be}` as 'deliveryStatus.sent') })}</Badge>
               <Badge>{t('messages.weekCount', { n: s.sent_this_week, cap: s.weekly_cap })}</Badge>

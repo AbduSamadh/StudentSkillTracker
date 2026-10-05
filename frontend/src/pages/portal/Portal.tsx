@@ -257,7 +257,7 @@ export function PortalMessages() {
                     {t(`messageTypes.${m.type}` as 'messageTypes.logistics')} · {fmtDateTime(m.sent_at)}
                   </span>
                 </summary>
-                <pre className="mt-3 whitespace-pre-wrap font-sans text-sm [overflow-wrap:anywhere]">{m.body}</pre>
+                <pre className="mt-3 whitespace-pre-wrap font-sans text-sm wrap-anywhere">{m.body}</pre>
               </details>
             </li>
           ))}

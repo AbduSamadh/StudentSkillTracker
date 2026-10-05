@@ -318,7 +318,7 @@ export function InsightsPage() {
                 <summary className="cursor-pointer text-slate-600">
                   {t('insights.facts')} · {i.rule}
                 </summary>
-                <pre className="mt-1 overflow-auto rounded bg-slate-50 p-2" dir="ltr">
+                <pre className="mt-1 overflow-auto rounded-sm bg-slate-50 p-2" dir="ltr">
                   {JSON.stringify(i.facts, null, 2)}
                 </pre>
               </details>

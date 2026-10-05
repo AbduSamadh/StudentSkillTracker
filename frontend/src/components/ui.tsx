@@ -103,11 +103,11 @@ export function Badge({ children, tone = 'slate', className }: { children: React
 export function ClaimBadge({ type }: { type: ClaimType }) {
   const { t } = useTranslation()
   return type === 'measured' ? (
-    <span title={t('common.measuredHint')} className="inline-flex items-center gap-1 rounded border border-emerald-600 px-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
+    <span title={t('common.measuredHint')} className="inline-flex items-center gap-1 rounded-sm border border-emerald-600 px-1.5 text-[11px] font-semibold uppercase tracking-wide text-emerald-800">
       <span aria-hidden>●</span> {t('common.measured')}
     </span>
   ) : (
-    <span title={t('common.inferredHint')} className="inline-flex items-center gap-1 rounded border border-dashed border-violet-600 px-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-800">
+    <span title={t('common.inferredHint')} className="inline-flex items-center gap-1 rounded-sm border border-dashed border-violet-600 px-1.5 text-[11px] font-semibold uppercase tracking-wide text-violet-800">
       <span aria-hidden>◌</span> {t('common.inferred')}
     </span>
   )
@@ -243,7 +243,7 @@ export function TableWrap({ children }: { children: ReactNode }) {
 export function useToast(): [ReactNode, (msg: string, tone?: 'success' | 'error' | 'info') => void] {
   const [toast, setToast] = useState<{ msg: string; tone: 'success' | 'error' | 'info' } | null>(null)
   const node = toast ? (
-    <div aria-live="polite" className="fixed bottom-4 start-1/2 z-50 -translate-x-1/2 rtl:translate-x-1/2">
+    <div aria-live="polite" className="fixed bottom-4 inset-s-1/2 z-50 -translate-x-1/2 rtl:translate-x-1/2">
       <div className={cx('rounded-lg px-4 py-2 text-sm text-white shadow-lg', toast.tone === 'error' ? 'bg-red-700' : toast.tone === 'info' ? 'bg-slate-800' : 'bg-emerald-700')}>
         {toast.msg}
       </div>
@@ -275,9 +275,9 @@ export function Meter({ value, max = 100, threshold, label, valueText }: { value
         aria-valuemax={max}
         aria-valuenow={value ?? undefined}
         aria-valuetext={tip}
-        className="relative h-2.5 min-w-[96px] flex-1 overflow-hidden rounded bg-[#cde2fb]"
+        className="relative h-2.5 min-w-[96px] flex-1 overflow-hidden rounded-sm bg-[#cde2fb]"
       >
-        <div className="absolute inset-y-0 start-0 rounded bg-[#256abf]" style={{ width: `${pct}%` }} />
+        <div className="absolute inset-y-0 inset-s-0 rounded-sm bg-[#256abf]" style={{ width: `${pct}%` }} />
         {threshold !== undefined && (
           <div aria-hidden className="absolute inset-y-[-2px] w-0.5 bg-slate-900" style={{ insetInlineStart: `calc(${(threshold / max) * 100}% - 1px)` }} />
         )}

@@ -6,7 +6,7 @@ export interface QueuedWrite {
   path: string
   body: unknown
   label: string
-  createdAt: number
+  createdAt: number // strictly increasing per device; the order writes are replayed in
   attempts: number
   status: 'pending' | 'failed' | 'conflict'
   error?: string
