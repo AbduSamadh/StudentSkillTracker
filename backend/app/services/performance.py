@@ -18,7 +18,6 @@ REFERENCE_FIELD = 300
 FLAG_MISSING_FIELD_SIZE = "missing_field_size"
 FLAG_MISSING_PLACEMENT = "missing_placement"
 FLAG_PLACEMENT_EXCEEDS_FIELD = "placement_exceeds_field_size"
-FLAG_FIELD_SIZE_DEFAULTED_FROM_EXPECTED = "field_size_from_expected"
 
 
 @dataclass

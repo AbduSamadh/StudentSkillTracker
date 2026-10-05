@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     smtp_host: str | None = None
     smtp_port: int = 587
     postmark_token: str | None = None
+    # Password Postmark sends (HTTP Basic) on delivery webhooks: https://u:<this>@host/...
+    postmark_webhook_password: str | None = None
     sms_provider: Literal["outbox", "twilio"] = "outbox"
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None
@@ -93,6 +95,14 @@ class Settings(BaseSettings):
             insecure.append("field_encryption_key")
         if insecure:
             raise RuntimeError(f"Refusing to start with development secrets: {', '.join(insecure)}")
+        # Delivery-status webhooks are unauthenticated endpoints; each provider in use must sign them.
+        missing = []
+        if self.whatsapp_provider == "cloud_api" and not self.whatsapp_app_secret:
+            missing.append("whatsapp_app_secret")
+        if self.email_provider == "postmark" and not self.postmark_webhook_password:
+            missing.append("postmark_webhook_password")
+        if missing:
+            raise RuntimeError(f"Refusing to start without webhook secrets: {', '.join(missing)}")
 
 
 @lru_cache

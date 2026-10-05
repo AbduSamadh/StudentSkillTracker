@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Timed restore drill (acceptance criterion 13.1: "A restore from backup into a clean environment
-# succeeds in a timed drill"). Run quarterly, and after any change to backup.sh or the schema.
+# Timed restore drill (spec §13.1: "A restore from backup into a clean environment succeeds in a
+# timed drill"). Run quarterly (§10.3), and after any change to backup.sh or the schema.
 #
 # Restores an encrypted backup into a brand-new database, proves the result is usable and still
 # enforces tenant isolation, appends a JSON record of the drill as evidence, then drops the database.

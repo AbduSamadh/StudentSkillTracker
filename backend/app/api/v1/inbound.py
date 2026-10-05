@@ -4,6 +4,8 @@ Each one carries the tenant identifier inside data we issued (callback metadata 
 opaque token), so the tenant context is set before any lookup and RLS still applies.
 """
 
+import base64
+import binascii
 import hashlib
 import hmac
 import uuid
@@ -96,8 +98,21 @@ async def whatsapp_status(request: Request) -> dict:
     return {"processed": n}
 
 
+def _basic_auth_password(request: Request) -> str:
+    scheme, _, value = request.headers.get("authorization", "").partition(" ")
+    if scheme.lower() != "basic":
+        return ""
+    try:
+        return base64.b64decode(value, validate=True).decode().partition(":")[2]
+    except (binascii.Error, UnicodeDecodeError):
+        return ""
+
+
 @router.post("/webhooks/email/postmark")
 async def postmark_event(request: Request) -> dict:
+    password = get_settings().postmark_webhook_password
+    if password and not hmac.compare_digest(_basic_auth_password(request).encode(), password.encode()):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Bad credentials")
     payload = await request.json()
     meta = payload.get("Metadata") or {}
     parsed = _parse_callback(f"{meta.get('tenant_id', '')}:{meta.get('delivery_id', '')}")

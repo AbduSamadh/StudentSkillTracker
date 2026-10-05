@@ -1,5 +1,5 @@
 # Tests, migration checks and security scans on every change. Deploy runs only from main, only when
-# every job — including every security scan — has passed (spec §10: "a blocked deploy on failing
+# every job — including every security scan — has passed (spec §10.3: "a blocked deploy on failing
 # security scans").
 name: CI
 

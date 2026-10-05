@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Daily encrypted logical backup (spec §10: daily encrypted backups, quarterly tested restore).
+# Daily encrypted logical backup (spec §10.3: daily encrypted backups, quarterly tested restore).
 #
 # Writes BACKUP_DIR/stemtrack-<UTC time>.dump.age and a .sha256 beside it. The dump is pg_dump's
 # custom format, encrypted with age to one or more PUBLIC keys: the host that takes backups never
