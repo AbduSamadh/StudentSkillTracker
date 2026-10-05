@@ -26,6 +26,9 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-jwt-secret-change-me-0123456789abcdef"  # noqa: S105
     # Fernet key (urlsafe base64, 32 bytes) for field-level encryption of contact details.
     field_encryption_key: str = "q0Zl7mNw1m3o7m2nQh0xvC1x4p9Yv0aJgS3c6q7m2rU="
+    # Retired Fernet keys, still accepted for reading until `python -m app.cli rotate-keys` has
+    # re-encrypted everything under field_encryption_key (docs/operations.md, "Rotating keys").
+    field_encryption_previous_keys: list[str] = Field(default_factory=list)
     # HMAC key for blind indexes (lets us look up an encrypted email without decrypting).
     blind_index_key: str = "dev-only-blind-index-key"
 

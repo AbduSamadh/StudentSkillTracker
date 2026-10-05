@@ -13,6 +13,7 @@ import getpass
 import uuid
 
 import pyotp
+from cryptography.fernet import InvalidToken
 from sqlalchemy import insert, select
 from sqlalchemy.ext.asyncio import create_async_engine
 
@@ -81,6 +82,31 @@ async def purge(tenant: str) -> None:
     print(await retention_job(str(t.id)))
 
 
+async def rotate_keys() -> None:
+    """Re-encrypt every tenant's encrypted fields under the current key. Each tenant commits on
+    its own; one that fails (a value no configured key can read) is reported and left as it was."""
+    from app.services.keys import rotate_tenant
+
+    async with anonymous_session() as s:
+        tenants = [(t.id, t.slug) for t in (await s.scalars(select(Tenant))).all()]
+    failed = []
+    for tid, slug in tenants:
+        async with tenant_session(tid) as session:
+            tenant = await session.get(Tenant, tid)
+            assert tenant is not None
+            try:
+                counts = await rotate_tenant(session, tenant)
+            except InvalidToken:
+                await session.rollback()
+                failed.append(slug)
+                print(f"{slug}: FAILED — a value could not be read with any configured key; nothing changed")
+                continue
+            await session.commit()
+        print(f"{slug}: re-encrypted {counts}")
+    if failed:
+        raise SystemExit(f"rotation incomplete for: {', '.join(failed)}. Keep the old key configured.")
+
+
 def main() -> None:
     p = argparse.ArgumentParser(prog="stemtrack")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -99,6 +125,7 @@ def main() -> None:
     c.add_argument("--secret", required=True)
     d = sub.add_parser("purge")
     d.add_argument("--tenant", required=True)
+    sub.add_parser("rotate-keys", help="re-encrypt stored secrets under the current key")
     args = p.parse_args()
 
     async def run() -> None:
@@ -114,6 +141,8 @@ def main() -> None:
                 await seed_demo()
             elif args.cmd == "purge":
                 await purge(args.tenant)
+            elif args.cmd == "rotate-keys":
+                await rotate_keys()
         finally:
             await dispose_engine()
 

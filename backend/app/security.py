@@ -12,7 +12,7 @@ import jwt
 import pyotp
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError
-from cryptography.fernet import Fernet, InvalidToken
+from cryptography.fernet import Fernet, InvalidToken, MultiFernet
 
 from app.config import get_settings
 
@@ -113,8 +113,12 @@ def verify_totp(secret: str, code: str) -> bool:
 
 
 # ---- Field-level encryption ----
-def _fernet() -> Fernet:
-    return Fernet(get_settings().field_encryption_key.encode())
+def _fernet() -> MultiFernet:
+    # Encrypts with the current key; decrypts with the current key or any retired one.
+    s = get_settings()
+    return MultiFernet(
+        [Fernet(k.encode()) for k in (s.field_encryption_key, *s.field_encryption_previous_keys)]
+    )
 
 
 def encrypt_field(value: str | None) -> str | None:
@@ -130,6 +134,14 @@ def decrypt_field(value: str | None) -> str | None:
         return _fernet().decrypt(value.encode()).decode()
     except InvalidToken:
         return None
+
+
+def rotate_field(value: str | None) -> str | None:
+    """Re-encrypt a stored value under the current key. Raises InvalidToken if no configured key
+    can read it, so a rotation never silently destroys data."""
+    if not value:
+        return value
+    return _fernet().rotate(value.encode()).decode()
 
 
 def blind_index(value: str | None) -> str | None:
