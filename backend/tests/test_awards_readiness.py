@@ -1,7 +1,9 @@
 """Entering is not demonstrating: proposed awards don't count until a named teacher confirms.
 Readiness is traceable to the exact awards and requirements (acceptance criterion 13.1.3)."""
 
+from app.db import tenant_session
 from app.models.enums import Role, ScopeType
+from app.seed.reference import load_taxonomy
 from tests.conftest import World, make_user
 
 
@@ -287,3 +289,25 @@ async def test_coverage_regroups_the_same_evidence_by_framework(client, world: W
     assert missing.status_code == 404
     teacher = await client.get("/api/v1/skills/coverage?framework=CSTA", headers=world["teacher_a"].headers)
     assert teacher.status_code == 403
+
+
+async def test_a_retired_skill_keeps_its_history_and_stays_retired(client, world: World) -> None:  # noqa: ANN001
+    admin = world["admin"].headers
+    skill = next(x for x in (await client.get("/api/v1/skills?q=SCI.LAB.03", headers=admin)).json())
+    body = {k: skill[k] for k in ("code", "name", "domain", "strand", "parent_label_en", "parent_label_ar")}
+    r = await client.patch(f"/api/v1/skills/{skill['id']}", json={**body, "is_active": False}, headers=admin)
+    assert r.status_code == 200 and r.json()["is_active"] is False
+    assert not (await client.get("/api/v1/skills?q=SCI.LAB.03", headers=admin)).json()
+    renamed = await client.patch(
+        f"/api/v1/skills/{skill['id']}",
+        json={**body, "code": "SCI.LAB.99", "is_active": False},
+        headers=admin,
+    )
+    assert renamed.status_code == 422
+    # Reloading the taxonomy (re-provisioning) must not quietly bring it back.
+    async with tenant_session(world.tenant) as s:
+        await load_taxonomy(s)
+        await s.commit()
+    listed = (await client.get("/api/v1/skills?q=SCI.LAB.03&include_inactive=true", headers=admin)).json()
+    assert listed[0]["is_active"] is False
+    await client.patch(f"/api/v1/skills/{skill['id']}", json={**body, "is_active": True}, headers=admin)

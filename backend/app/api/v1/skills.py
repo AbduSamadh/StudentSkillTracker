@@ -66,9 +66,10 @@ async def update_skill(skill_id: uuid.UUID, body: SkillIn, ctx: CtxDep) -> Skill
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Skill codes are stable and cannot be changed"
         )
+    retiring = s.is_active and not body.is_active
     for k, v in body.model_dump(exclude={"code"}).items():
         setattr(s, k, v)
-    ctx.audit("skill.update", "skill", s.id)
+    ctx.audit("skill.retire" if retiring else "skill.update", "skill", s.id)
     return SkillOut.model_validate(s)
 
 

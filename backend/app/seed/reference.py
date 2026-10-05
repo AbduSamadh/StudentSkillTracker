@@ -20,21 +20,21 @@ TAXONOMY_CSV = Path(__file__).parent / "data" / "skills_taxonomy.csv"
 
 
 async def load_taxonomy(session: AsyncSession) -> int:
-    """Idempotent upsert by code. Codes are stable; names and labels may be revised."""
+    """Idempotent upsert by code. Codes are stable; names and labels may be revised. A skill a
+    school has retired stays retired: only skills created here start active."""
     existing = {s.code: s for s in (await session.scalars(select(Skill))).all()}
     n = 0
     with TAXONOMY_CSV.open(encoding="utf-8") as f:
         for row in csv.DictReader(f):
             s = existing.get(row["code"])
             if s is None:
-                s = Skill(code=row["code"])
+                s = Skill(code=row["code"], is_active=True)
                 session.add(s)
                 n += 1
             s.domain, s.strand, s.name = row["domain"], row["strand"], row["name"]
             s.parent_label_en, s.parent_label_ar = row["parent_label_en"], row["parent_label_ar"]
             s.typical_year_group = int(row["typical_year_group"]) if row["typical_year_group"] else None
             s.framework_refs = [r for r in row["framework_refs"].split(";") if r]
-            s.is_active = True
     await session.flush()
     return n
 

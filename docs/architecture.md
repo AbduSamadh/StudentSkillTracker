@@ -69,6 +69,7 @@ The three skill relations stay separate, as the spec requires: *requirements* (c
   - Per student: each requirement not met, and by how many levels.
   - Per squad: the *shared* gaps, ranked by how many students closing the gap would unblock. Training-session focus suggestions come from this, each with its reason.
 - **Recommendations** list every check behind each one: eligibility, readiness against the threshold (default 65%), registration open, budget, no exam clash. "Not recommended" items say which check failed.
+- **Framework reporting.** Skill coverage can regroup the same verified evidence by any external framework in the taxonomy's crosswalk (`?framework=CSTA`), with the usual suppression ([taxonomy](skills-taxonomy.md#framework-crosswalk)).
 - **Flags** (stretch, plateau, attendance) record the rule and the facts that triggered them. They are about demonstrated skills and participation only. The engine never infers personality or character (spec §8.1).
 
 ## Results and the performance index (`app/services/performance.py`)
@@ -125,6 +126,7 @@ draft ──preview (3 real recipients)──▶ release by a named approver ─
   - kit utilisation
   Each exports to PDF (WeasyPrint, with Noto for Arabic), Excel, CSV and HTML. Each is branded and names the user who generated it.
 - **Media consent.** Students without media consent are pseudonymised in generated reports ([why](security-and-privacy.md#media-consent)).
+- **On screen**, figure captions and withheld reasons are rebuilt by the PWA from the structured fields (`withheld_rule`, `withheld_min`, denominators) in the reader's language. The API's English `display` text is kept for exports.
 
 ## Internationalisation and accessibility
 

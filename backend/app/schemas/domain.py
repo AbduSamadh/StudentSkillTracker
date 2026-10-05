@@ -56,6 +56,7 @@ class SkillIn(BaseModel):
     parent_label_ar: str
     typical_year_group: int | None = Field(default=None, ge=1, le=13)
     framework_refs: list[str] = []
+    is_active: bool = True  # retire a skill by setting this false; its history is kept
 
 
 class SeasonIn(BaseModel):
