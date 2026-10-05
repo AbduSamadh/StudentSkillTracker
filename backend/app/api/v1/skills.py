@@ -1,10 +1,11 @@
 import uuid
+from collections.abc import Sequence
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, HTTPException, Query, Response, status
 from sqlalchemy import func, select
 
-from app.deps import CtxDep
+from app.deps import Ctx, CtxDep
 from app.models import Skill, SkillAward, SquadMembership, Student, TrainingSession
 from app.models.enums import AwardSource, AwardStatus, EnrolmentStatus, MembershipStatus, Role
 from app.permissions import (
@@ -251,9 +252,15 @@ async def revoke_award(award_id: uuid.UUID, body: RevokeIn, ctx: CtxDep) -> Awar
 
 
 @router.get("/coverage")
-async def coverage(ctx: CtxDep) -> dict:
+async def coverage(
+    ctx: CtxDep, framework: str | None = Query(None, max_length=20, pattern=r"^[A-Za-z]+$")
+) -> dict:
     """Taxonomy coverage across the cohort: which skills have any verified evidence, and how
-    many students hold them. Small cells are suppressed (spec §6.1)."""
+    many students hold them. Small cells are suppressed (spec §6.1).
+
+    With ``framework`` (e.g. CSTA), the same verified evidence is also regrouped by that
+    framework's codes, so it can be reported against another standard without re-tagging
+    (spec §4.1)."""
     ctx.require(Cap.VIEW_SCHOOL_ANALYTICS)
     settings = ctx.settings
     skills = (await ctx.session.scalars(select(Skill).where(Skill.is_active.is_(True)))).all()
@@ -316,7 +323,49 @@ async def coverage(ctx: CtxDep) -> dict:
             }
             for d in sorted(by_domain.values(), key=lambda d: d["domain"])
         ],
+        "frameworks": sorted({ref.split(":", 1)[0] for sk in skills for ref in sk.framework_refs}),
+        **({"framework": await _framework_coverage(ctx, skills, framework.upper())} if framework else {}),
     }
+
+
+async def _framework_coverage(ctx: Ctx, skills: Sequence[Skill], framework: str) -> dict:
+    """One row per framework code: the taxonomy skills mapped to it, how many have verified
+    evidence, and how many active students hold at least one of them."""
+    prefix = f"{framework}:"
+    codes: dict[str, list[Skill]] = {}
+    for sk in skills:
+        for ref in sk.framework_refs:
+            if ref.startswith(prefix):
+                codes.setdefault(ref.removeprefix(prefix), []).append(sk)
+    if not codes:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"No skills are mapped to {framework}")
+    holders_by_skill: dict[uuid.UUID, set[uuid.UUID]] = {}
+    for skill_id, student_id in (
+        await ctx.session.execute(
+            select(SkillAward.skill_id, SkillAward.student_id)
+            .join(Student, Student.id == SkillAward.student_id)
+            .where(
+                SkillAward.status == AwardStatus.VERIFIED,
+                SkillAward.skill_id.in_([sk.id for group in codes.values() for sk in group]),
+                Student.enrolment_status == EnrolmentStatus.ACTIVE,
+            )
+            .distinct()
+        )
+    ).all():
+        holders_by_skill.setdefault(skill_id, set()).add(student_id)
+    rows = []
+    for code in sorted(codes):
+        group = codes[code]
+        students = set().union(*(holders_by_skill.get(sk.id, set()) for sk in group))
+        rows.append(
+            {
+                "code": code,
+                "skills": [sk.code for sk in group],
+                "skills_evidenced": sum(1 for sk in group if sk.id in holders_by_skill),
+                "students": Figure.count(len(students), ctx.settings, label=f"{framework} {code}").as_dict(),
+            }
+        )
+    return {"name": framework, "codes": rows}
 
 
 @router.post("/awards/self-assess", response_model=AwardOut, status_code=201)

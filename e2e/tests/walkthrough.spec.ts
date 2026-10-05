@@ -71,6 +71,12 @@ test('leader signs in with MFA and sees the six-number dashboard', async ({ page
   await expect(page.getByText('Participation against school roll')).toBeVisible()
   await expect(page.getByText('Spend against budget')).toBeVisible()
   await expect(page.getByText('Year-on-year')).toBeVisible()
+
+  // 13.1.7: the figures' captions and withheld reasons switch language too, not just the labels.
+  await page.getByRole('button', { name: 'التبديل إلى العربية' }).click()
+  await expect(page.getByText(/\d+% \(.*من أصل \d+/).first()).toBeVisible()
+  await expect(page.getByText(/students on roll|Withheld because/)).toHaveCount(0)
+  await page.getByRole('button', { name: 'Switch to English' }).click()
 })
 
 test('13.1.3 readiness is traced to the awards and requirements behind it', async ({ page }) => {

@@ -27,6 +27,10 @@ class Figure:
     denominator_label: str | None
     withheld: bool = False
     withheld_reason: str | None = None
+    # Which disclosure rule withheld it, and that rule's minimum, so clients can explain it in
+    # the reader's language: no_base | base (percentage base) | cell | remainder | sample.
+    withheld_rule: str | None = None
+    withheld_min: int | None = None
     claim_type: ClaimType = "measured"
     unit: str | None = None
 
@@ -60,16 +64,22 @@ class Figure:
             unit="%",
         )
         if denominator <= 0:
-            return f._withhold("there is no base to calculate from")
+            return f._withhold("there is no base to calculate from", "no_base")
         if apply_base_rule and denominator < min_base:
             return f._withhold(
                 f"the base of {denominator} {denominator_label} is below the minimum of {min_base} "
-                "for publishing a percentage"
+                "for publishing a percentage",
+                "base",
+                min_base,
             )
         if apply_base_rule and 0 < numerator < min_cell:
-            return f._withhold(f"fewer than {min_cell} {denominator_label} are in this group")
+            return f._withhold(
+                f"fewer than {min_cell} {denominator_label} are in this group", "cell", min_cell
+            )
         if apply_base_rule and 0 < denominator - numerator < min_cell:
-            return f._withhold(f"fewer than {min_cell} {denominator_label} are outside this group")
+            return f._withhold(
+                f"fewer than {min_cell} {denominator_label} are outside this group", "remainder", min_cell
+            )
         f.value = int(
             (Decimal(numerator) * 100 / Decimal(denominator)).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
         )
@@ -102,7 +112,9 @@ class Figure:
         )
         if apply_cell_rule and 0 < n < min_cell:
             f.value = None
-            return f._withhold(f"fewer than {min_cell} students — the cell could identify individuals")
+            return f._withhold(
+                f"fewer than {min_cell} students — the cell could identify individuals", "cell", min_cell
+            )
         return f
 
     @classmethod
@@ -149,11 +161,12 @@ class Figure:
         )
         if denominator is not None and denominator < min_cell:
             f.value = None
-            return f._withhold(f"based on fewer than {min_cell} {denominator_label}")
+            return f._withhold(f"based on fewer than {min_cell} {denominator_label}", "sample", min_cell)
         return f
 
-    def _withhold(self, reason: str) -> "Figure":
+    def _withhold(self, reason: str, rule: str, minimum: int | None = None) -> "Figure":
         self.withheld, self.withheld_reason, self.value = True, reason, None
+        self.withheld_rule, self.withheld_min = rule, minimum
         return self
 
     # ---- rendering ----
@@ -188,6 +201,8 @@ class Figure:
             "display": self.display,
             "withheld": self.withheld,
             "withheld_reason": self.withheld_reason,
+            "withheld_rule": self.withheld_rule,
+            "withheld_min": self.withheld_min,
             "claim_type": self.claim_type,
             "unit": self.unit,
         }

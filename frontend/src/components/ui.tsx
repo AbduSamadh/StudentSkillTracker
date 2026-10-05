@@ -1,6 +1,7 @@
 import { type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { figureCaption, withheldReason } from '@/lib/figures'
 import type { ClaimType, Figure } from '@/lib/types'
 
 export function cx(...c: (string | false | null | undefined)[]): string {
@@ -127,7 +128,7 @@ export function LevelPill({ level }: { level: number }) {
 
 /** A figure with its denominator, or "Withheld" with the reason — never silently blank. */
 export function FigureTile({ figure, title, footer }: { figure: Figure; title?: string; footer?: ReactNode }) {
-  const { t } = useTranslation()
+  const { t, i18n } = useTranslation()
   return (
     <div className={cx('card flex flex-col gap-2', figure.claim_type === 'inferred' && 'claim-inferred')}>
       <div className="flex items-start justify-between gap-2">
@@ -137,7 +138,7 @@ export function FigureTile({ figure, title, footer }: { figure: Figure; title?: 
       {figure.withheld ? (
         <div>
           <div className="text-2xl font-bold text-amber-800">{t('common.withheld')}</div>
-          <p className="text-xs text-amber-900">{t('common.withheldBecause', { reason: figure.withheld_reason })}</p>
+          <p className="text-xs text-amber-900">{t('common.withheldBecause', { reason: withheldReason(t, figure) })}</p>
         </div>
       ) : (
         <div>
@@ -145,7 +146,7 @@ export function FigureTile({ figure, title, footer }: { figure: Figure; title?: 
             {figure.kind === 'percent' ? `${figure.value}%` : figure.kind === 'money' ? new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 }).format(Number(figure.value)) : figure.value}
             {figure.kind === 'money' && <span className="ms-1 text-base font-medium text-slate-500">{figure.unit}</span>}
           </div>
-          <p className="text-xs text-slate-600">{figure.display}</p>
+          <p className="text-xs text-slate-600">{figureCaption(t, figure, i18n.language)}</p>
         </div>
       )}
       {footer}

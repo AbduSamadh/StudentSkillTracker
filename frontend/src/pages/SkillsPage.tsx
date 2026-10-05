@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next'
 import { Badge, Card, FigureTile, Loading, Meter, PageHeader, SelectInput, TableWrap, TextInput } from '@/components/ui'
 import { api } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
+import { withheldReason } from '@/lib/figures'
 import { useSkills } from '@/lib/queries'
 import type { Figure } from '@/lib/types'
 
@@ -12,7 +13,13 @@ interface Coverage {
   taxonomy_coverage: Figure
   active_students: number
   domains: { domain: string; skills_total: number; skills_evidenced: number; coverage: Figure; skills: { code: string; name: string; holders: Figure }[] }[]
+  frameworks: string[]
+  framework?: { name: string; codes: { code: string; skills: string[]; skills_evidenced: number; students: Figure }[] }
 }
+
+// Framework identifiers as stored in the taxonomy's framework_refs, and how they are written.
+const FRAMEWORK_NAMES: Record<string, string> = { IBATL: 'IB ATL', MOEAI: 'MoE AI' }
+const frameworkName = (f: string) => FRAMEWORK_NAMES[f] ?? f
 
 export default function SkillsPage() {
   const { t, i18n } = useTranslation()
@@ -20,7 +27,13 @@ export default function SkillsPage() {
   const skills = useSkills()
   const [domain, setDomain] = useState('')
   const [q, setQ] = useState('')
+  const [framework, setFramework] = useState('')
   const coverage = useQuery({ queryKey: ['coverage'], queryFn: () => api<Coverage>('/skills/coverage'), enabled: can('view_school_analytics') })
+  const byFramework = useQuery({
+    queryKey: ['coverage', framework],
+    queryFn: () => api<Coverage>(`/skills/coverage?framework=${encodeURIComponent(framework)}`),
+    enabled: can('view_school_analytics') && !!framework,
+  })
   const domains = useMemo(() => [...new Set((skills.data ?? []).map((s) => s.domain))], [skills.data])
   const holders = useMemo(() => {
     const m = new Map<string, Figure>()
@@ -48,6 +61,54 @@ export default function SkillsPage() {
             </ul>
           </Card>
         </div>
+      )}
+      {coverage.data && (
+        <Card className="mb-4" title={t('skills.byFramework')}>
+          <div className="max-w-xs">
+            <SelectInput label={t('skills.reportAgainst')} value={framework} onChange={(e) => setFramework(e.target.value)}>
+              <option value="">{t('skills.chooseFramework')}</option>
+              {coverage.data.frameworks.map((f) => (
+                <option key={f} value={f}>
+                  {frameworkName(f)}
+                </option>
+              ))}
+            </SelectInput>
+          </div>
+          {framework && byFramework.isLoading && <Loading />}
+          {framework && byFramework.data?.framework && (
+            <>
+              <p className="mt-3 text-sm text-slate-600">{t('skills.frameworkNote', { name: frameworkName(framework) })}</p>
+              <TableWrap>
+                <table className="mt-2">
+                  <thead>
+                    <tr>
+                      <th>{t('skills.frameworkCode')}</th>
+                      <th>{t('skills.mappedSkills')}</th>
+                      <th>{t('skills.evidenced')}</th>
+                      <th>{t('skills.holdersAny')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {byFramework.data.framework.codes.map((r) => (
+                      <tr key={r.code}>
+                        <td className="whitespace-nowrap font-mono text-xs" dir="ltr">
+                          {r.code}
+                        </td>
+                        <td className="font-mono text-xs" dir="ltr">
+                          {r.skills.join(', ')}
+                        </td>
+                        <td>
+                          {r.skills_evidenced}/{r.skills.length}
+                        </td>
+                        <td title={r.students.withheld ? withheldReason(t, r.students) : ''}>{r.students.withheld ? t('common.withheld') : r.students.value}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </TableWrap>
+            </>
+          )}
+        </Card>
       )}
       <Card>
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
@@ -97,7 +158,7 @@ export default function SkillsPage() {
                         ))}
                       </div>
                     </td>
-                    {coverage.data && <td title={h?.withheld_reason ?? ''}>{h ? (h.withheld ? t('common.withheld') : h.value) : '—'}</td>}
+                    {coverage.data && <td title={h?.withheld ? withheldReason(t, h) : ''}>{h ? (h.withheld ? t('common.withheld') : h.value) : '—'}</td>}
                   </tr>
                 )
               })}

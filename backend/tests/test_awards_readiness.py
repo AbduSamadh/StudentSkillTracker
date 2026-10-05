@@ -266,3 +266,24 @@ async def test_multi_role_user_teacher_and_parent(client, world: World) -> None:
     assert (await client.get(f"/api/v1/students/{world.ids['b1']}", headers=both.headers)).status_code == 200
     # Being a parent of Ava does not give staff access to Ava's record.
     assert (await client.get(f"/api/v1/students/{world.ids['a1']}", headers=both.headers)).status_code == 404
+
+
+async def test_coverage_regroups_the_same_evidence_by_framework(client, world: World) -> None:  # noqa: ANN001
+    leader = world["leader"].headers
+    plain = (await client.get("/api/v1/skills/coverage", headers=leader)).json()
+    assert "CSTA" in plain["frameworks"] and "framework" not in plain
+    out = (await client.get("/api/v1/skills/coverage?framework=csta", headers=leader)).json()
+    rows = out["framework"]["codes"]
+    assert out["framework"]["name"] == "CSTA" and rows
+    assert all(not r["code"].startswith("CSTA:") for r in rows)  # codes are shown without the prefix
+    for r in rows:
+        assert r["skills"] and 0 <= r["skills_evidenced"] <= len(r["skills"])
+        # A handful of students per code is the norm in one school: 1-4 must be withheld (0 names nobody).
+        if r["students"]["value"] is not None:
+            assert r["students"]["value"] == 0 or r["students"]["value"] >= 5
+        else:
+            assert r["students"]["withheld"] and r["students"]["withheld_reason"]
+    missing = await client.get("/api/v1/skills/coverage?framework=NOPE", headers=leader)
+    assert missing.status_code == 404
+    teacher = await client.get("/api/v1/skills/coverage?framework=CSTA", headers=world["teacher_a"].headers)
+    assert teacher.status_code == 403

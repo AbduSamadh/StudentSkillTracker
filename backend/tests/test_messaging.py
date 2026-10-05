@@ -1,5 +1,6 @@
 """Parent-messaging safeguards (spec §7.3; acceptance criteria 13.1.5 and 13.1.6)."""
 
+import re
 import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -96,6 +97,36 @@ async def test_preview_shows_three_real_recipients_and_safeguards(client, world:
         assert sample["weekly_cap"] == 100 and "sent_this_week" in sample
     arabic = next(x for x in p["samples"] if x["language"] == "ar")
     assert "الترتيبات" in arabic["subject"]
+
+
+async def test_team_mates_without_media_consent_are_counted_not_named(client, world: World) -> None:  # noqa: ANN001
+    # Ava and Sam (one family, both with media consent) competed as a team with Ali (no media consent).
+    team = [str(world.ids[k]) for k in ("a1", "sib", "a2")]
+    r = await client.post(
+        "/api/v1/results",
+        json={
+            "edition_id": str(world.ids["edition"]),
+            "squad_id": str(world.ids["squad_a"]),
+            "participant_ids": team,
+            "placement": 3,
+            "field_size": 24,
+        },
+        headers=world["teacher_a"].headers,
+    )
+    assert r.status_code == 201, r.text
+    m = await draft(client, world, [str(world.ids["a1"]), str(world.ids["a2"])], mtype="result_notification")
+    p = (await client.post(f"/api/v1/messages/{m['id']}/preview", headers=world["admin"].headers)).json()
+    by_family = {x["guardian_name"]: x["body"] for x in p["samples"]}
+    to_ava_family, to_ali_family = by_family["Parent of Ava and Sam"], by_family["Parent of Ali"]
+    assert "placed 3 of 24" in to_ava_family
+
+    def team_line(body: str) -> str:  # just the sentence: the rest holds a random opt-out token
+        return body.split("Team-mates:", 1)[1].split(".", 1)[0]
+
+    # Ali is never named; he is counted (other tests' results in this edition may add to the count).
+    assert "Ali" not in team_line(to_ava_family)
+    assert re.search(r"\b\d+ others?\b", team_line(to_ava_family))
+    assert {"Ava", "Sam"} <= set(team_line(to_ali_family).replace(",", " ").split())  # consented: named
 
 
 async def test_siblings_get_one_message_per_family(client, world: World) -> None:  # noqa: ANN001

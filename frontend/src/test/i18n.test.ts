@@ -30,7 +30,8 @@ describe('Arabic translation', () => {
 
   it('is actually Arabic for sentences (not copied English)', () => {
     const arabic = /[؀-ۿ]/
-    const untranslated = Object.entries(A).filter(([k, v]) => v.length > 12 && !arabic.test(v) && !k.startsWith('reports.audience'))
+    const words = (v: string) => v.replace(/{{\s*\w+\s*}}/g, '').trim() // placeholders are not words
+    const untranslated = Object.entries(A).filter(([k, v]) => words(v).length > 12 && !arabic.test(v) && !k.startsWith('reports.audience'))
     expect(untranslated).toEqual([])
   })
 })

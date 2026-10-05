@@ -26,6 +26,8 @@ export interface Figure {
   display: string
   withheld: boolean
   withheld_reason: string | null
+  withheld_rule: 'no_base' | 'base' | 'cell' | 'remainder' | 'sample' | null
+  withheld_min: number | null
   claim_type: ClaimType
   unit: string | null
 }

@@ -340,10 +340,6 @@ async def opted_out_count(session: AsyncSession, guardian_ids: list[uuid.UUID], 
     )
 
 
-async def media_ok(session: AsyncSession, ids: list[uuid.UUID]) -> set[uuid.UUID]:
-    return await media_consented_ids(session, ids)
-
-
 async def tenant_of(session: AsyncSession) -> Tenant:
     tid = (await session.execute(text("SELECT app_current_tenant()"))).scalar_one()
     t = await session.get(Tenant, tid)

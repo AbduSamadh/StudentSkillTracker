@@ -4,7 +4,8 @@ import { Link } from 'react-router-dom'
 
 import { Alert, Badge, ClaimBadge, FigureTile, Loading, PageHeader } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
-import { fmtDate } from '@/lib/format'
+import { withheldReason } from '@/lib/figures'
+import { fmtDate, isolate } from '@/lib/format'
 import type { Figure } from '@/lib/types'
 
 interface Dashboard {
@@ -29,7 +30,7 @@ export default function DashboardPage() {
   const trend = d.trend
   return (
     <>
-      <PageHeader title={t('dashboard.title')} subtitle={`${t('dashboard.subtitle')}${d.season ? ` · ${t('dashboard.season')}: ${d.season.name}` : ''}`} />
+      <PageHeader title={t('dashboard.title')} subtitle={`${t('dashboard.subtitle')}${d.season ? ` · ${t('dashboard.season')}: ${isolate(d.season.name)}` : ''}`} />
       {!d.season && <Alert tone="warn">{t('dashboard.noSeason')}</Alert>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <FigureTile title={t('dashboard.participation')} figure={d.participation} />
@@ -88,9 +89,9 @@ export default function DashboardPage() {
             <ClaimBadge type="measured" />
           </div>
           {trend.available ? (
-            <TrendTile previous={trend.previous} current={trend.current} label={trend.label} />
+            <TrendTile previous={trend.previous} current={trend.current} label={t('dashboard.trendLabel', { from: isolate(trend.previous.label), to: isolate(trend.current.label) })} />
           ) : (
-            <p className="text-sm text-slate-600">{trend.reason}</p>
+            <p className="text-sm text-slate-600">{t('dashboard.trendUnavailable')}</p>
           )}
         </section>
       </div>
@@ -102,14 +103,14 @@ export default function DashboardPage() {
 function TrendTile({ previous, current, label }: { previous: Figure; current: Figure; label: string }) {
   const { t } = useTranslation()
   if (previous.withheld || current.withheld) {
-    return <p className="text-sm text-amber-900">{t('common.withheldBecause', { reason: (current.withheld ? current : previous).withheld_reason })}</p>
+    return <p className="text-sm text-amber-900">{t('common.withheldBecause', { reason: withheldReason(t, current.withheld ? current : previous) })}</p>
   }
   const delta = Number(current.value) - Number(previous.value)
   return (
     <div>
       <div className="text-3xl font-bold">{current.value}</div>
       <p className="text-sm text-slate-700">
-        <span aria-hidden>{delta > 0 ? '▲' : delta < 0 ? '▼' : '■'}</span> {delta > 0 ? `+${delta}` : delta} ({previous.label}: {previous.value})
+        <span aria-hidden>{delta > 0 ? '▲' : delta < 0 ? '▼' : '■'}</span> {delta > 0 ? `+${delta}` : delta} ({isolate(previous.label)}: {previous.value})
       </p>
       <p className="text-xs text-slate-500">{label}</p>
     </div>

@@ -41,3 +41,9 @@ export function hexToTriplet(hex: string): string {
 export function pick<T>(en: T, ar: T | null | undefined): T {
   return i18n.language === 'ar' && ar ? ar : en
 }
+
+/** Wrap inserted data (a season like "2026-27", a code) in Unicode isolates so the text around
+ *  it cannot reorder it: in an Arabic sentence "2026-27" would otherwise display as "27-2026". */
+export function isolate(s: string): string {
+  return `\u2068${s}\u2069`
+}
