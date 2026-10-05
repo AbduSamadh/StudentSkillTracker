@@ -30,3 +30,7 @@ backups/
 
 # Local Redis snapshots
 dump.rdb
+
+# Backups, and the per-deployment list of age public keys they are encrypted to
+deploy/backup-recipients.txt
+*.age

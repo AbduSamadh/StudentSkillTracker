@@ -27,6 +27,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
       STEM_OWNER_PASSWORD: ${STEM_OWNER_PASSWORD:-stem_owner}
       STEM_APP_PASSWORD: ${STEM_APP_PASSWORD:-stem_app}
+      STEM_BACKUP_PASSWORD: ${STEM_BACKUP_PASSWORD:-stem_backup}
     volumes:
       - pgdata:/var/lib/postgresql/data
       - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
@@ -80,6 +81,26 @@ services:
       migrate: { condition: service_completed_successfully }
     command: ["arq", "app.worker.WorkerSettings"]
 
+  # Encrypted logical backup into the `backups` volume (see docs/operations.md):
+  #   docker compose --profile ops run --rm backup
+  backup:
+    build: ./backend
+    profiles: [ops]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      BACKUP_DATABASE_URL: postgresql://stem_backup:${STEM_BACKUP_PASSWORD:-stem_backup}@db:5432/stemtrack
+      BACKUP_AGE_RECIPIENTS: /run/backup-recipients.txt
+      BACKUP_DIR: /app/var/backups
+    volumes:
+      - backups:/app/var/backups
+      - type: bind
+        source: ${BACKUP_AGE_RECIPIENTS_FILE:-./deploy/backup-recipients.txt}
+        target: /run/backup-recipients.txt
+        read_only: true
+        bind: { create_host_path: false }
+    entrypoint: ["scripts/backup.sh"]
+
   web:
     build: ./frontend
     ports: ["8080:8080"]
@@ -89,3 +110,4 @@ volumes:
   pgdata:
   redisdata:
   miniodata:
+  backups:
