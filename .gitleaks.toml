@@ -1,0 +1,10 @@
+# Gitleaks configuration: the default rules, plus reviewed values that are not secrets.
+# Add an entry only after confirming the value was never used anywhere real, and fix the code so
+# the finding does not recur.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Throwaway Fernet key once typed into a config test (now generated at runtime)"
+regexTarget = "secret"
+regexes = ['''^Wn9FSaJqY0sHqKUrbUcgCzAK0ERM1PJ2WMcfAbRwTSU=$''']

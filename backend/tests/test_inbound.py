@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Iterator
 
 import pytest
+from cryptography.fernet import Fernet
 from sqlalchemy import select
 
 from app.config import Settings, get_settings
@@ -118,7 +119,7 @@ def test_production_refuses_to_start_without_webhook_secrets() -> None:
         "environment": "production",
         "jwt_secret": "x" * 48,
         "blind_index_key": "y" * 32,
-        "field_encryption_key": "Wn9FSaJqY0sHqKUrbUcgCzAK0ERM1PJ2WMcfAbRwTSU=",
+        "field_encryption_key": Fernet.generate_key().decode(),
     }
     Settings(**base).assert_safe_for_production()
     with pytest.raises(RuntimeError, match="whatsapp_app_secret"):
