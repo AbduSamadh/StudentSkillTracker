@@ -1,0 +1,80 @@
+@import 'tailwindcss';
+
+/* Design tokens. --brand and --accent are replaced per school at runtime from tenant branding. */
+:root {
+  --brand: 15 118 110;
+  --brand-ink: 255 255 255;
+  --brand-soft: 240 253 250;
+  --accent: 245 158 11;
+  color-scheme: light;
+}
+
+@theme {
+  --color-brand: rgb(var(--brand));
+  --color-brand-ink: rgb(var(--brand-ink));
+  --color-brand-soft: rgb(var(--brand-soft));
+  --color-accent: rgb(var(--accent));
+  --font-sans: 'Noto Sans', 'Noto Sans Arabic', system-ui, sans-serif;
+}
+
+/* Tailwind 4 borders default to currentcolor; keep the softer default the screens were designed with. */
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand focus:outline-hidden focus:ring-2 focus:ring-brand/30 disabled:bg-slate-100;
+}
+
+@utility card {
+  @apply rounded-xl border border-slate-200 bg-white p-4 shadow-xs;
+}
+
+@utility claim-inferred {
+  @apply border-dashed;
+}
+
+html[dir='rtl'] body {
+  font-family: 'Noto Sans Arabic', 'Noto Sans', system-ui, sans-serif;
+}
+
+@layer base {
+  body {
+    @apply antialiased;
+  }
+  /* Visible keyboard focus everywhere (WCAG 2.2 focus appearance). */
+  :focus-visible {
+    @apply outline-solid outline-2 outline-offset-2 outline-brand;
+  }
+  h1 {
+    @apply text-2xl font-bold text-slate-900;
+  }
+  h2 {
+    @apply text-lg font-semibold text-slate-900;
+  }
+  h3 {
+    @apply text-base font-semibold text-slate-900;
+  }
+  table {
+    @apply w-full text-sm;
+  }
+  th {
+    @apply text-start font-semibold text-slate-600 bg-slate-50 px-3 py-2 border-b border-slate-200;
+  }
+  td {
+    @apply px-3 py-2 border-b border-slate-100 align-top;
+  }
+}
+
+@media print {
+  nav,
+  .no-print {
+    display: none !important;
+  }
+}

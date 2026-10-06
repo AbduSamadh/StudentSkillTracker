@@ -1,0 +1,19 @@
+{
+  "name": "stemtrack-e2e",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Browser walkthrough of the seeded demo school (acceptance criteria 13.1.1, 13.1.3, 13.1.7)",
+  "scripts": {
+    "test": "playwright test",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^22.20.5",
+    "typescript": "~5.9.3"
+  },
+  "engines": {
+    "node": ">=22.22"
+  }
+}

@@ -1,0 +1,307 @@
+# Tests, migration checks and security scans on every change. Deploy runs only from main, only when
+# every job — including every security scan — has passed (spec §10.3: "a blocked deploy on failing
+# security scans").
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '23 3 * * *' # daily, so newly published vulnerabilities fail the build without a code change
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '22'
+  GITLEAKS_VERSION: '8.30.1'
+  TRIVY_VERSION: '0.75.0'
+  PGHOST: localhost
+  PGUSER: postgres
+  PGPASSWORD: postgres
+
+jobs:
+  backend:
+    name: Backend — lint, types, migrations, tests
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - name: System libraries for PDF export
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-noto-core
+      - run: pip install -e '.[dev]'
+      - name: Lint and format
+        run: |
+          ruff check .
+          ruff format --check .
+      - name: Type check
+        run: mypy app
+      - name: Database roles
+        run: |
+          psql -v ON_ERROR_STOP=1 -f scripts/init_db.sql
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE stemtrack_test OWNER stem_owner" \
+                                  -c "CREATE DATABASE stemtrack_migrations OWNER stem_owner"
+      - name: Migrations apply, match the models, and roll back cleanly
+        env:
+          STEM_MIGRATION_DATABASE_URL: postgresql+asyncpg://stem_owner:stem_owner@localhost:5432/stemtrack_migrations
+          STEM_DATABASE_URL: postgresql+asyncpg://stem_app:stem_app@localhost:5432/stemtrack_migrations
+        run: |
+          alembic upgrade head
+          alembic check
+          alembic downgrade base
+          alembic upgrade head
+      - name: Tests (including the authorisation suite)
+        run: pytest -q
+
+  frontend:
+    name: Frontend — types, tests, build
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end walkthrough and restore drill
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env: { POSTGRES_PASSWORD: postgres }
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7
+        ports: ['6379:6379']
+    env:
+      STEM_DATABASE_URL: postgresql+asyncpg://stem_app:stem_app@localhost:5432/stemtrack
+      STEM_MIGRATION_DATABASE_URL: postgresql+asyncpg://stem_owner:stem_owner@localhost:5432/stemtrack
+      STEM_REDIS_URL: redis://localhost:6379/0
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            e2e/package-lock.json
+      - name: System packages (PDF export, backup encryption)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz-subset0 fonts-noto-core age
+      - name: Start the API with the demo school
+        working-directory: backend
+        run: |
+          pip install -e .
+          psql -v ON_ERROR_STOP=1 -f scripts/init_db.sql
+          psql -v ON_ERROR_STOP=1 -c "CREATE DATABASE stemtrack OWNER stem_owner"
+          alembic upgrade head
+          python -m app.cli seed-demo
+          STEM_STORAGE_LOCAL_PATH="$RUNNER_TEMP/storage" nohup uvicorn app.main:app --port 8000 > "$RUNNER_TEMP/api.log" 2>&1 &
+          timeout 60 bash -c 'until curl -sf http://localhost:8000/api/v1/health; do sleep 1; done'
+      - name: Build and serve the PWA
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+          nohup npx vite preview --port 4173 --strictPort > "$RUNNER_TEMP/web.log" 2>&1 &
+          timeout 60 bash -c 'until curl -sf http://localhost:4173/api/v1/health; do sleep 1; done'
+      - name: Browser walkthrough (offline capture, readiness trace, Arabic RTL)
+        working-directory: e2e
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+      - name: Encrypted backup, then a timed restore into a clean database
+        working-directory: backend
+        env:
+          BACKUP_DATABASE_URL: postgresql://stem_backup:stem_backup@localhost:5432/stemtrack
+          DRILL_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          DRILL_MAX_SECONDS: '300'
+        run: |
+          age-keygen -o "$RUNNER_TEMP/identity.txt"
+          age-keygen -y "$RUNNER_TEMP/identity.txt" > "$RUNNER_TEMP/recipients.txt"
+          BACKUP_AGE_RECIPIENTS="$RUNNER_TEMP/recipients.txt" BACKUP_DIR="$RUNNER_TEMP/backups" scripts/backup.sh
+          BACKUP_AGE_IDENTITY="$RUNNER_TEMP/identity.txt" DRILL_LOG="$RUNNER_TEMP/restore-drills.jsonl" \
+            scripts/restore_drill.sh "$RUNNER_TEMP"/backups/stemtrack-*.dump.age
+      - name: Keep the drill record
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: restore-drill
+          path: ${{ runner.temp }}/restore-drills.jsonl
+          if-no-files-found: ignore
+      - name: Keep logs and the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failure
+          path: |
+            e2e/playwright-report
+            e2e/test-results
+            ${{ runner.temp }}/api.log
+            ${{ runner.temp }}/web.log
+
+  security:
+    name: Security scans
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the secret scan reads the whole history
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Secrets in git history (gitleaks)
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -sSfLO "$base/$archive"
+          curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep " $archive\$" | sha256sum --check
+          tar -xzf "$archive" gitleaks
+          ./gitleaks git --no-banner --redact --exit-code 1 .
+      - name: Python dependencies (pip-audit)
+        working-directory: backend
+        run: |
+          pip install -e '.[dev]'
+          pip-audit --skip-editable --progress-spinner off
+      - name: Python static analysis (bandit, medium severity and above)
+        working-directory: backend
+        run: bandit -q -r app -ll
+      - name: JavaScript dependencies (npm audit, high and above)
+        run: |
+          (cd frontend && npm audit --audit-level=high)
+          (cd e2e && npm audit --audit-level=high)
+
+  images:
+    name: Container images — build, smoke test, scan
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      api: ${{ steps.publish.outputs.api }}
+      web: ${{ steps.publish.outputs.web }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      # No layer cache: each build re-runs the OS upgrade so the scan sees today's fixes.
+      - name: Build API image
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          pull: true
+          load: true
+          tags: stemtrack-api:ci
+      - name: Build web image
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          pull: true
+          load: true
+          tags: stemtrack-web:ci
+      - name: API image renders an Arabic PDF and has the backup tools
+        run: |
+          docker run --rm stemtrack-api:ci python -c "
+          import weasyprint
+          pdf = weasyprint.HTML(string='<html dir=rtl lang=ar><p>تقرير الطالب</p></html>').write_pdf()
+          assert pdf.startswith(b'%PDF'), 'no PDF'
+          print('pdf ok', len(pdf), 'bytes')"
+          docker run --rm stemtrack-api:ci sh -c 'pg_dump --version && age --version'
+      - name: Install Trivy
+        run: |
+          base="https://github.com/aquasecurity/trivy/releases/download/v${TRIVY_VERSION}"
+          archive="trivy_${TRIVY_VERSION}_Linux-64bit.tar.gz"
+          curl -sSfLO "$base/$archive"
+          curl -sSfL "$base/trivy_${TRIVY_VERSION}_checksums.txt" | grep " $archive\$" | sha256sum --check
+          tar -xzf "$archive" trivy
+      - name: Scan images (any fixable HIGH or CRITICAL vulnerability fails the build)
+        run: |
+          for image in stemtrack-api:ci stemtrack-web:ci; do
+            ./trivy image --no-progress --severity HIGH,CRITICAL --ignore-unfixed --exit-code 1 "$image"
+          done
+      - name: Publish the scanned images (main only)
+        id: publish
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          repo="ghcr.io/${GITHUB_REPOSITORY_OWNER,,}"
+          for name in api web; do
+            ref="$repo/stemtrack-$name:${GITHUB_SHA}"
+            docker tag "stemtrack-$name:ci" "$ref"
+            docker push "$ref"
+            echo "$name=$(docker inspect --format '{{index .RepoDigests 0}}' "$ref")" >> "$GITHUB_OUTPUT"
+          done
+
+  deploy:
+    name: Deploy
+    needs: [backend, frontend, e2e, security, images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    # Configure required reviewers on the "production" environment in the repository settings.
+    environment: production
+    steps:
+      - name: Roll out the scanned image digests
+        env:
+          DEPLOY_WEBHOOK_URL: ${{ secrets.DEPLOY_WEBHOOK_URL }}
+          API_IMAGE: ${{ needs.images.outputs.api }}
+          WEB_IMAGE: ${{ needs.images.outputs.web }}
+        run: |
+          echo "API image: $API_IMAGE"
+          echo "Web image: $WEB_IMAGE"
+          if [ -z "$DEPLOY_WEBHOOK_URL" ]; then
+            echo "::notice::No DEPLOY_WEBHOOK_URL secret on the production environment; images are published but not rolled out."
+            exit 0
+          fi
+          # The hosting platform (UAE region) runs migrations with the API image, then rolls out
+          # API, worker and web. See docs/operations.md.
+          curl -sSf -X POST "$DEPLOY_WEBHOOK_URL" -H 'Content-Type: application/json' \
+            -d "{\"sha\":\"$GITHUB_SHA\",\"api_image\":\"$API_IMAGE\",\"web_image\":\"$WEB_IMAGE\"}"

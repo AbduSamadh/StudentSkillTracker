@@ -1,0 +1,113 @@
+# Local / demo stack. Production runs the same images on managed Postgres (with PITR) and
+# managed Redis in a UAE region — see docs/operations.md.
+name: stemtrack
+
+x-api-env: &api-env
+  STEM_ENVIRONMENT: ${STEM_ENVIRONMENT:-development}
+  STEM_DATABASE_URL: postgresql+asyncpg://stem_app:${STEM_APP_PASSWORD:-stem_app}@db:5432/stemtrack
+  STEM_MIGRATION_DATABASE_URL: postgresql+asyncpg://stem_owner:${STEM_OWNER_PASSWORD:-stem_owner}@db:5432/stemtrack
+  STEM_REDIS_URL: redis://redis:6379/0
+  STEM_USE_JOB_QUEUE: "true"
+  STEM_STORAGE_BACKEND: s3
+  STEM_S3_ENDPOINT_URL: http://minio:9000
+  STEM_S3_BUCKET: stemtrack
+  STEM_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-stemtrack}
+  STEM_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-stemtrack-dev-secret}
+  STEM_PUBLIC_BASE_URL: ${STEM_PUBLIC_BASE_URL:-http://localhost:8080}
+  STEM_API_BASE_URL: ${STEM_PUBLIC_BASE_URL:-http://localhost:8080}
+  STEM_CORS_ORIGINS: '["http://localhost:8080"]'
+  STEM_JWT_SECRET: ${STEM_JWT_SECRET:-dev-only-jwt-secret-change-me-0123456789abcdef}
+  STEM_FIELD_ENCRYPTION_KEY: ${STEM_FIELD_ENCRYPTION_KEY:-q0Zl7mNw1m3o7m2nQh0xvC1x4p9Yv0aJgS3c6q7m2rU=}
+  STEM_BLIND_INDEX_KEY: ${STEM_BLIND_INDEX_KEY:-dev-only-blind-index-key}
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      STEM_OWNER_PASSWORD: ${STEM_OWNER_PASSWORD:-stem_owner}
+      STEM_APP_PASSWORD: ${STEM_APP_PASSWORD:-stem_app}
+      STEM_BACKUP_PASSWORD: ${STEM_BACKUP_PASSWORD:-stem_backup}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d stemtrack"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes: [redisdata:/data]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-stemtrack}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-stemtrack-dev-secret}
+    volumes: [miniodata:/data]
+
+  minio-setup:
+    image: minio/mc:latest
+    depends_on: [minio]
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 $${MINIO_ROOT_USER:-stemtrack} $${MINIO_ROOT_PASSWORD:-stemtrack-dev-secret}; do sleep 1; done;
+      mc mb --ignore-existing local/stemtrack; mc anonymous set none local/stemtrack"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-stemtrack}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-stemtrack-dev-secret}
+
+  migrate:
+    build: ./backend
+    environment: *api-env
+    depends_on:
+      db: { condition: service_healthy }
+    command: ["alembic", "upgrade", "head"]
+
+  api:
+    build: ./backend
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      redis: { condition: service_started }
+      minio-setup: { condition: service_completed_successfully }
+
+  worker:
+    build: ./backend
+    environment: *api-env
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+    command: ["arq", "app.worker.WorkerSettings"]
+
+  # Encrypted logical backup into the `backups` volume (see docs/operations.md):
+  #   docker compose --profile ops run --rm backup
+  backup:
+    build: ./backend
+    profiles: [ops]
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      BACKUP_DATABASE_URL: postgresql://stem_backup:${STEM_BACKUP_PASSWORD:-stem_backup}@db:5432/stemtrack
+      BACKUP_AGE_RECIPIENTS: /run/backup-recipients.txt
+      BACKUP_DIR: /app/var/backups
+    volumes:
+      - backups:/app/var/backups
+      - type: bind
+        source: ${BACKUP_AGE_RECIPIENTS_FILE:-./deploy/backup-recipients.txt}
+        target: /run/backup-recipients.txt
+        read_only: true
+        bind: { create_host_path: false }
+    entrypoint: ["scripts/backup.sh"]
+
+  web:
+    build: ./frontend
+    ports: ["8080:8080"]
+    depends_on: [api]
+
+volumes:
+  pgdata:
+  redisdata:
+  miniodata:
+  backups:
