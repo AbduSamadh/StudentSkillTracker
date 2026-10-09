@@ -1,0 +1,17 @@
+// Try the platform without installing anything: GitHub Codespaces (or VS Code Dev Containers)
+// builds this container, starts the whole docker compose stack with the fictional demo school,
+// and forwards the app on port 8080.
+{
+  "name": "STEM Programmes demo",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": { "memory": "8gb" },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": { "label": "STEM Programmes", "onAutoForward": "openBrowser" }
+  },
+  "otherPortsAttributes": { "onAutoForward": "silent" },
+  "postStartCommand": "bash .devcontainer/start-demo.sh"
+}

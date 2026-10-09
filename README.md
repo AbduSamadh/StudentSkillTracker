@@ -17,14 +17,24 @@ A multi-tenant platform for running a school's STEM competition programme. It co
 | `backend/scripts/` | Database role setup, encrypted backup, timed restore drill |
 | `frontend/` | React 18 + TypeScript PWA (Vite, TanStack Query, Tailwind), English/Arabic with RTL, offline capture |
 | `e2e/` | Playwright walkthrough of the demo school |
-| `deploy/`, `docker-compose.yml` | Local/demo stack: Postgres, Redis, MinIO, API, worker, web |
+| `deploy/`, `docker-compose.yml` | Local/demo stack: Postgres, Redis, API, worker, web (files in a shared volume) |
 | `.github/workflows/ci.yml` | Tests, migration checks and security scans; deploy is blocked unless all pass |
 | `docs/` | [Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Operations runbook](docs/operations.md) · [Skills taxonomy](docs/skills-taxonomy.md) |
+
+## Try it in your browser (nothing to install)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/AbduSamadh/StudentSkillTracker?quickstart=1)
+
+1. Click the button, then **Create codespace**.
+2. Wait about 10 minutes the first time while the terminal builds and seeds the demo.
+3. The app opens in a new tab. If it doesn't, open the **Ports** tab and click the globe next to port 8080.
+
+The terminal prints the demo accounts when it's ready. Stop the codespace from github.com/codespaces when you're done; GitHub's free monthly allowance covers occasional testing.
 
 ## Quick start (Docker)
 
 ```sh
-cp .env.example .env          # development defaults are fine for a local demo
+cp .env.example .env          # Windows Command Prompt: copy .env.example .env
 docker compose up -d --build
 docker compose run --rm api python -m app.cli seed-demo
 open http://localhost:8080    # API docs: http://localhost:8080/api/docs

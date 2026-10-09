@@ -1,0 +1,4 @@
+# Unix line endings everywhere, including Windows checkouts: shell scripts and config files run
+# inside Linux containers, where a carriage return breaks them.
+* text=auto eol=lf
+*.png binary
