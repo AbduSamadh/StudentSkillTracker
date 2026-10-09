@@ -203,6 +203,33 @@ jobs:
         if: failure()
         run: docker compose logs --no-color --tail 200
 
+  staging-kit:
+    name: Staging kit — HTTPS, staging mode, generated secrets
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up the staging site the way the server does
+        run: STAGING_DOMAIN=localhost bash deploy/staging/setup.sh
+      - name: Served over HTTPS, in staging mode, with secure cookies and HSTS
+        run: |
+          grep -q '^STEM_ENVIRONMENT=staging$' .env
+          if grep -Eq 'dev-only|change-me' .env; then echo 'development secrets in .env' >&2; exit 1; fi
+          curl -sfk https://localhost/ | grep -q '<div id="root">'
+          headers="$(curl -sfk -D - -o /dev/null -X POST https://localhost/api/v1/auth/password-login \
+            -H 'Content-Type: application/json' -H 'X-Requested-With: stemtrack' \
+            -d '{"tenant":"demo","email":"sara.haddad@demo.school.example","password":"Demo-Password-2026!"}')"
+          echo "$headers" | grep -i '^set-cookie: stem_refresh=' | grep -qi 'secure'
+          echo "$headers" | grep -qi '^strict-transport-security:'
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://localhost/)" = 308
+      - name: Only Caddy is reachable; the app's own port is not published
+        run: |
+          if curl -s --max-time 3 http://localhost:8080/ >/dev/null; then echo 'port 8080 is published' >&2; exit 1; fi
+      - name: Running it again (an update) is safe
+        run: bash deploy/staging/setup.sh | grep -q 'demo already seeded'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f docker-compose.yml -f deploy/staging/docker-compose.staging.yml logs --no-color --tail 200
+
   security:
     name: Security scans
     runs-on: ubuntu-24.04
@@ -303,7 +330,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [backend, frontend, e2e, demo-stack, security, images]
+    needs: [backend, frontend, e2e, demo-stack, staging-kit, security, images]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Configure required reviewers on the "production" environment in the repository settings.

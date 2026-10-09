@@ -19,7 +19,7 @@ A multi-tenant platform for running a school's STEM competition programme. It co
 | `e2e/` | Playwright walkthrough of the demo school |
 | `deploy/`, `docker-compose.yml` | Local/demo stack: Postgres, Redis, API, worker, web (files in a shared volume) |
 | `.github/workflows/ci.yml` | Tests, migration checks and security scans; deploy is blocked unless all pass |
-| `docs/` | [Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Operations runbook](docs/operations.md) · [Skills taxonomy](docs/skills-taxonomy.md) |
+| `docs/` | [Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Operations runbook](docs/operations.md) · [Staging on Azure](docs/staging.md) · [Skills taxonomy](docs/skills-taxonomy.md) |
 
 ## Try it in your browser (nothing to install)
 
@@ -30,6 +30,8 @@ A multi-tenant platform for running a school's STEM competition programme. It co
 3. The app opens in a new tab. If it doesn't, open the **Ports** tab and click the globe next to port 8080.
 
 The terminal prints the demo accounts when it's ready. Stop the codespace from github.com/codespaces when you're done; GitHub's free monthly allowance covers occasional testing.
+
+A shared staging site for teachers and leaders to try, on one Azure server in UAE North, takes one command: see [docs/staging.md](docs/staging.md).
 
 ## Quick start (Docker)
 
@@ -88,7 +90,7 @@ All configuration is environment variables prefixed `STEM_` (see `backend/app/co
 | Command | What it runs |
 |---|---|
 | `cd backend && ruff check . && ruff format --check . && mypy app` | Lint, format, types |
-| `cd backend && pytest` | 124 tests against a real Postgres as the non-superuser runtime role, so RLS is exercised |
+| `cd backend && pytest` | 125 tests against a real Postgres as the non-superuser runtime role, so RLS is exercised |
 | `cd frontend && npm run typecheck && npm test && npm run build` | Types, unit tests, production build |
 | `cd e2e && npm ci && npx playwright test` | Browser walkthrough against a seeded stack (`E2E_BASE_URL`, default `vite preview` on :4173) |
 

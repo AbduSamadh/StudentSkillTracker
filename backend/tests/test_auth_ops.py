@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 import pyotp
+import pytest
 import respx
 from httpx import Response
 from sqlalchemy import select
@@ -366,3 +367,16 @@ async def test_full_data_export_excludes_credentials(client, world: World) -> No
     users = z.read("users.json").decode()
     assert "password_hash" not in users and "mfa_secret_enc" not in users
     assert "students.json" in z.namelist() and "refresh_tokens.json" not in z.namelist()
+
+
+async def test_demo_seeder_refuses_production() -> None:
+    from app.config import get_settings
+    from app.seed.demo import seed_demo
+
+    s = get_settings()
+    saved, s.environment = s.environment, "production"
+    try:
+        with pytest.raises(SystemExit, match="refused in production"):
+            await seed_demo()
+    finally:
+        s.environment = saved
