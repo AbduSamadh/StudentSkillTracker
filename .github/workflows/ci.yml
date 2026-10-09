@@ -183,6 +183,26 @@ jobs:
             ${{ runner.temp }}/api.log
             ${{ runner.temp }}/web.log
 
+  demo-stack:
+    name: Demo stack — docker compose, as Codespaces runs it
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build, start and seed with the dev container's own script
+        run: bash .devcontainer/start-demo.sh
+      - name: The web container serves the app and signs a teacher in through its /api proxy
+        run: |
+          curl -sf http://localhost:8080/ | grep -q '<div id="root">'
+          curl -sf -X POST http://localhost:8080/api/v1/auth/password-login \
+            -H 'Content-Type: application/json' -H 'X-Requested-With: stemtrack' \
+            -d '{"tenant":"demo","email":"sara.haddad@demo.school.example","password":"Demo-Password-2026!"}' \
+            | grep -q '"access_token"'
+      - name: Running it again is safe (a restarted codespace)
+        run: bash .devcontainer/start-demo.sh | grep -q 'demo already seeded'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail 200
+
   security:
     name: Security scans
     runs-on: ubuntu-24.04
@@ -283,7 +303,7 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [backend, frontend, e2e, security, images]
+    needs: [backend, frontend, e2e, demo-stack, security, images]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     # Configure required reviewers on the "production" environment in the repository settings.
