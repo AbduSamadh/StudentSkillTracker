@@ -17,7 +17,7 @@ A multi-tenant platform for running a school's STEM competition programme. It co
 | `backend/scripts/` | Database role setup, encrypted backup, timed restore drill |
 | `frontend/` | React 18 + TypeScript PWA (Vite, TanStack Query, Tailwind), English/Arabic with RTL, offline capture |
 | `e2e/` | Playwright walkthrough of the demo school |
-| `deploy/`, `docker-compose.yml` | Local/demo stack: Postgres, Redis, MinIO, API, worker, web |
+| `deploy/`, `docker-compose.yml` | Local/demo stack: Postgres, Redis, API, worker, web (files in a shared volume) |
 | `.github/workflows/ci.yml` | Tests, migration checks and security scans; deploy is blocked unless all pass |
 | `docs/` | [Architecture](docs/architecture.md) · [Security and privacy](docs/security-and-privacy.md) · [Operations runbook](docs/operations.md) · [Skills taxonomy](docs/skills-taxonomy.md) |
 
