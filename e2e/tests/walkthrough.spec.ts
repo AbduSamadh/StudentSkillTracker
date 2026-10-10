@@ -65,12 +65,15 @@ const test = base.extend({
   },
 })
 
-test('leader signs in with MFA and sees the six-number dashboard', async ({ page }) => {
+test('leader signs in with MFA and lands on a home page with what needs them and the six numbers', async ({ page }) => {
   await signIn(page, LEADER)
+  await expect(page.getByRole('heading', { name: 'Needs your attention' })).toBeVisible()
+  // The demo has two budget lines waiting for the leader; the home page says so and links there.
+  await expect(page.getByRole('link', { name: /Budget requests waiting for your decision/ })).toBeVisible()
   await expect(page.getByRole('heading', { name: 'School overview' })).toBeVisible()
-  await expect(page.getByText('Participation against school roll')).toBeVisible()
-  await expect(page.getByText('Spend against budget')).toBeVisible()
-  await expect(page.getByText('Year-on-year')).toBeVisible()
+  await expect(page.getByText('Students taking part')).toBeVisible()
+  await expect(page.getByText('Spending', { exact: true })).toBeVisible()
+  await expect(page.getByText('Compared with last year')).toBeVisible()
 
   // 13.1.7: the figures' captions and withheld reasons switch language too, not just the labels.
   await page.getByRole('button', { name: 'التبديل إلى العربية' }).click()
@@ -85,7 +88,7 @@ test('13.1.3 readiness is traced to the awards and requirements behind it', asyn
   await page.getByRole('tab', { name: 'Readiness' }).click()
   await expect(page.getByRole('heading', { name: 'Shared gap list' }).first()).toBeVisible()
 
-  await page.getByRole('tab', { name: 'Members' }).click()
+  await page.getByRole('tab', { name: 'Students' }).click()
   await page.getByRole('link', { name: 'Hamda Al Falasi' }).click()
   await page.getByRole('tab', { name: 'Readiness' }).click()
   const select = page.getByLabel('Readiness for')
@@ -106,7 +109,8 @@ test('13.1.1 attendance captured offline is kept on the device and syncs once re
 }) => {
   await signIn(page, TEACHER)
   await page.goto('/capture/attendance')
-  await page.getByLabel('Squad').selectOption({ label: 'Robotics A (Senior)' })
+  await page.getByRole('radio', { name: /Robotics A \(Senior\)/ }).click()
+  await expect(page.getByRole('heading', { name: 'Squad: Robotics A (Senior)' })).toBeVisible()
   await expect(page.getByText('Mark all present')).toBeVisible()
 
   await context.setOffline(true)
@@ -136,20 +140,20 @@ test('13.1.7 the interface switches to Arabic with a right-to-left layout', asyn
 test('a parent message is previewed with real recipients before anyone can release it', async ({ page }) => {
   await signIn(page, ADMIN)
   await page.goto('/messages/new')
-  await page.getByLabel('Message type').selectOption('logistics')
-  await page.getByLabel('Whole squad').selectOption({ label: 'Robotics A (Senior)' })
-  const edition = page.getByLabel('Competition')
+  await page.getByRole('radio', { name: /^Logistics/ }).click()
+  await page.getByLabel('A whole squad').selectOption({ label: 'Robotics A (Senior)' })
+  const edition = page.getByLabel('Competition it is about')
   await edition.locator('option', { hasText: 'Emirate Qualifier' }).first().waitFor({ state: 'attached' })
   const options = await edition.locator('option').allTextContents()
   await edition.selectOption({ label: options.find((o) => o.includes('Emirate Qualifier'))! })
-  await page.getByLabel('meet time').fill('06:45')
-  await page.getByLabel('pickup time').fill('17:30')
-  await page.getByLabel('kit list').fill('Lunch, water, school PE kit')
-  await page.getByRole('button', { name: 'Save draft' }).click()
+  await page.getByLabel('Meeting time').fill('06:45')
+  await page.getByLabel('Pick-up time').fill('17:30')
+  await page.getByLabel('What to bring').fill('Lunch, water, school PE kit')
+  await page.getByRole('button', { name: 'Save and check' }).click()
   await page.waitForURL('**/messages/*')
 
   await expect(page.getByRole('button', { name: 'Release' })).toHaveCount(0) // not before a preview
-  await page.getByRole('button', { name: 'Preview' }).first().click()
+  await page.getByRole('button', { name: 'Show preview' }).click()
   await expect(page.getByText('Exactly what three families will receive')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Release' })).toBeVisible()
 })
@@ -169,6 +173,24 @@ test('13.1.7 a parent uses the portal in Arabic on a phone', async ({ browser })
   await page.getByRole('link', { name: /حمدة|Hamda/ }).first().click()
   await expect(page.getByText('الموافقات').first()).toBeVisible()
   // Nothing overflows sideways on a phone.
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+  await context.close()
+})
+
+test('a teacher starts from shortcuts, waiting work and their squads, and nothing overflows on a phone', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+  const page = await context.newPage()
+  await signIn(page, TEACHER)
+  await expect(page.getByRole('heading', { name: 'What would you like to do?' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Needs your attention' })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Robotics A \(Senior\)/ })).toBeVisible()
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
+
+  // The phone tab bar goes straight to the everyday task.
+  await page.getByRole('navigation', { name: 'Quick links' }).getByRole('link', { name: 'Attendance' }).click()
+  await expect(page.getByRole('heading', { name: 'Take attendance' })).toBeVisible()
+  await page.getByRole('radio', { name: /Robotics A \(Senior\)/ }).click()
+  await expect(page.getByRole('button', { name: 'Save attendance' })).toBeVisible()
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390)
   await context.close()
 })

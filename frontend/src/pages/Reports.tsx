@@ -1,23 +1,25 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { BadgeCheck, ChartColumn, Download, Eye, Flag, NotebookPen, RefreshCw, Send } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { Alert, Badge, Button, Card, ClaimBadge, Empty, Loading, PageHeader, SelectInput, TableWrap, TextInput, useToast } from '@/components/ui'
+import { Alert, Badge, Button, Card, ClaimBadge, Empty, EmptyState, Loading, PageHeader, SelectInput, TableWrap, Tabs, TextInput, useToast } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDateTime } from '@/lib/format'
 import { useSquads } from '@/lib/queries'
 import type { Page, Student } from '@/lib/types'
 
-const REPORTS: { type: string; cap: string; audience: string; needs?: 'student' | 'squad' }[] = [
-  { type: 'student_profile', cap: 'generate_reports', audience: 'parent, student, coach', needs: 'student' },
-  { type: 'squad_readiness', cap: 'run_readiness', audience: 'coach', needs: 'squad' },
-  { type: 'season_review', cap: 'view_school_analytics', audience: 'leader' },
-  { type: 'cohort_coverage', cap: 'view_school_analytics', audience: 'leader, admin' },
-  { type: 'inspection_evidence', cap: 'export_inspection', audience: 'leader' },
-  { type: 'plateau_stretch', cap: 'run_readiness', audience: 'coach, admin' },
-  { type: 'kit_utilisation', cap: 'manage_inventory', audience: 'admin' },
+type Audience = 'parent' | 'student' | 'teacher' | 'programme_admin' | 'leader'
+const REPORTS: { type: string; cap: string; audience: Audience[]; needs?: 'student' | 'squad' }[] = [
+  { type: 'student_profile', cap: 'generate_reports', audience: ['parent', 'student', 'teacher'], needs: 'student' },
+  { type: 'squad_readiness', cap: 'run_readiness', audience: ['teacher'], needs: 'squad' },
+  { type: 'season_review', cap: 'view_school_analytics', audience: ['leader'] },
+  { type: 'cohort_coverage', cap: 'view_school_analytics', audience: ['leader', 'programme_admin'] },
+  { type: 'inspection_evidence', cap: 'export_inspection', audience: ['leader'] },
+  { type: 'plateau_stretch', cap: 'run_readiness', audience: ['teacher', 'programme_admin'] },
+  { type: 'kit_utilisation', cap: 'manage_inventory', audience: ['programme_admin'] },
 ]
 
 interface Job {
@@ -70,9 +72,9 @@ export default function ReportsPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('reports.title')} />
-      <Card className="mb-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+      <PageHeader icon={ChartColumn} title={t('reports.title')} subtitle={t('reports.intro')} />
+      <Card className="mb-6" title={t('reports.optionsTitle')} description={t('reports.optionsHint')}>
+        <div className="grid gap-4 sm:grid-cols-3">
           <SelectInput label={t('reports.format')} value={format} onChange={(e) => setFormat(e.target.value)}>
             <option value="pdf">PDF</option>
             <option value="xlsx">Excel</option>
@@ -80,7 +82,7 @@ export default function ReportsPage() {
             <option value="html">HTML</option>
           </SelectInput>
           <SelectInput label={t('reports.squad')} value={squad} onChange={(e) => setSquad(e.target.value)}>
-            <option value="" />
+            <option value="">{t('reports.chooseSquad')}</option>
             {(squads.data ?? []).map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -88,12 +90,12 @@ export default function ReportsPage() {
             ))}
           </SelectInput>
           <div>
-            <TextInput label={t('reports.student')} value={student ? student.display_name : studentQ} onChange={(e) => { setStudent(null); setStudentQ(e.target.value) }} />
+            <TextInput label={t('reports.student')} placeholder={t('students.searchPlaceholder')} value={student ? student.display_name : studentQ} onChange={(e) => { setStudent(null); setStudentQ(e.target.value) }} />
             {!student && found.data && studentQ.length >= 2 && (
-              <ul className="mt-1 rounded-lg border border-slate-200">
+              <ul className="mt-1 divide-y divide-slate-100 rounded-xl border border-slate-200">
                 {found.data.items.map((s) => (
                   <li key={s.id}>
-                    <button className="w-full px-3 py-1 text-start text-sm hover:bg-slate-50" onClick={() => setStudent(s)}>
+                    <button className="w-full px-3 py-2 text-start text-sm hover:bg-slate-50" onClick={() => setStudent(s)}>
                       {s.display_name}
                     </button>
                   </li>
@@ -103,19 +105,19 @@ export default function ReportsPage() {
           </div>
         </div>
       </Card>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {REPORTS.filter((r) => can(r.cap)).map((r) => {
           const p = params(r.needs)
           return (
-            <Card key={r.type} title={t(`reports.types.${r.type}` as 'reports.types.season_review')}>
+            <Card key={r.type} title={t(`reports.types.${r.type}` as 'reports.types.season_review')} className="flex flex-col">
               <p className="text-sm text-slate-600">{t(`reports.descriptions.${r.type}` as 'reports.descriptions.season_review')}</p>
-              <p className="mt-1 text-xs text-slate-500">{t('reports.audience', { who: r.audience })}</p>
-              {r.needs && !p && <p className="mt-2 text-xs text-amber-800">{r.needs === 'student' ? t('reports.student') : t('reports.squad')} ↑</p>}
-              <div className="mt-3 flex gap-2">
-                <Button size="sm" disabled={!p} busy={generate.isPending} onClick={() => p && generate.mutate({ type: r.type, params: p })}>
+              <p className="mt-2 text-sm text-slate-500">{t('reports.audience', { who: r.audience.map((a) => t(`users.roleNames.${a}`)).join(t('common.listSep')) })}</p>
+              {r.needs && !p && <p className="mt-2 text-sm text-amber-800">{r.needs === 'student' ? t('reports.needsStudent') : t('reports.needsSquad')}</p>}
+              <div className="mt-auto flex flex-wrap gap-2 pt-4">
+                <Button size="sm" icon={Download} disabled={!p} busy={generate.isPending} onClick={() => p && generate.mutate({ type: r.type, params: p })}>
                   {t('reports.generate')}
                 </Button>
-                <Button size="sm" variant="secondary" disabled={!p} onClick={() => p && void openPrint(r.type, p)}>
+                <Button size="sm" variant="secondary" icon={Eye} disabled={!p} onClick={() => p && void openPrint(r.type, p)}>
                   {t('reports.previewHtml')}
                 </Button>
               </div>
@@ -123,11 +125,11 @@ export default function ReportsPage() {
           )
         })}
       </div>
-      <Card title={t('reports.jobs')} className="mt-4">
+      <Card title={t('reports.jobs')} description={t('reports.jobsHint')} className="mt-6">
         {jobs.isLoading ? (
           <Loading />
         ) : !jobs.data?.length ? (
-          <Empty />
+          <Empty>{t('reports.noJobs')}</Empty>
         ) : (
           <TableWrap>
             <table>
@@ -146,7 +148,7 @@ export default function ReportsPage() {
                     <td>{t(`reports.types.${j.report_type}` as 'reports.types.season_review')}</td>
                     <td className="uppercase">{j.format}</td>
                     <td>
-                      <Badge tone={j.status === 'succeeded' ? 'green' : j.status === 'failed' ? 'red' : 'amber'}>{j.status}</Badge>
+                      <Badge tone={j.status === 'succeeded' ? 'green' : j.status === 'failed' ? 'red' : 'amber'}>{t(`jobStatus.${j.status}` as 'jobStatus.queued', { defaultValue: j.status })}</Badge>
                       {j.error && <div className="text-xs text-red-700">{j.error}</div>}
                     </td>
                     <td className="text-xs">{fmtDateTime(j.created_at)}</td>
@@ -189,44 +191,46 @@ export function FlagsPage() {
   return (
     <>
       <PageHeader
+        icon={Flag}
         title={t('flags.title')}
+        subtitle={t('flags.intro')}
         actions={
-          <Button variant="secondary" busy={refresh.isPending} onClick={() => refresh.mutate()}>
+          <Button variant="secondary" icon={RefreshCw} busy={refresh.isPending} onClick={() => refresh.mutate()}>
             {t('flags.refresh')}
           </Button>
         }
       />
-      <div className="mb-3 max-w-xs">
-        <SelectInput label={t('students.flag')} value={kind} onChange={(e) => setKind(e.target.value)}>
-          <option value="">{t('common.all')}</option>
-          {(['plateau', 'stretch', 'attendance'] as const).map((k) => (
-            <option key={k} value={k}>
-              {t(`flagKinds.${k}`)}
-            </option>
-          ))}
-        </SelectInput>
-      </div>
+      <Tabs
+        value={kind}
+        onChange={setKind}
+        tabs={(['', 'plateau', 'stretch', 'attendance'] as const).map((k) => ({ id: k, label: k ? t(`flagKinds.${k}`) : t('common.all') }))}
+      />
       {q.isLoading ? (
         <Loading />
       ) : !q.data?.length ? (
-        <Empty>{t('flags.none')}</Empty>
+        <EmptyState icon={Flag} title={t('flags.none')}>
+          {t('flags.noneHint')}
+        </EmptyState>
       ) : (
         <div className="space-y-3">
           {q.data.map((f) => (
             <div key={f.id} className="card claim-inferred flex flex-wrap items-start gap-3">
-              <Badge tone="amber">{t(`flagKinds.${f.kind}` as 'flagKinds.plateau')}</Badge>
+              <Flag aria-hidden className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
               <div className="min-w-[200px] flex-1">
-                <Link to={`/students/${f.student_id}`} className="font-medium text-brand hover:underline">
-                  {f.student_name}
-                </Link>{' '}
-                <span className="text-sm text-slate-500">· {t('common.year', { n: f.year_group })}</span>
-                <p className="text-sm">{f.explanation}</p>
-                <p className="text-xs text-slate-500">
+                <div className="flex flex-wrap items-baseline gap-x-2">
+                  <Link to={`/students/${f.student_id}`} className="font-semibold text-slate-900 hover:text-brand hover:underline">
+                    {f.student_name}
+                  </Link>
+                  <span className="text-sm text-slate-500">{t('common.year', { n: f.year_group })}</span>
+                  <Badge tone="amber">{t(`flagKinds.${f.kind}` as 'flagKinds.plateau')}</Badge>
+                </div>
+                <p className="mt-1 text-sm text-slate-700">{f.explanation}</p>
+                <p className="mt-1 text-xs text-slate-500">
                   {t('students.rule')}: {f.rule} · {t('flags.raised')} {fmtDateTime(f.raised_at)}
                 </p>
               </div>
               <ClaimBadge type="inferred" />
-              <Button size="sm" variant="ghost" onClick={() => resolve.mutate(f.id)}>
+              <Button size="sm" variant="secondary" icon={BadgeCheck} onClick={() => resolve.mutate(f.id)}>
                 {t('flags.resolve')}
               </Button>
             </div>
@@ -273,15 +277,16 @@ export function InsightsPage() {
     <>
       {toast}
       <PageHeader
+        icon={NotebookPen}
         title={t('insights.title')}
         subtitle={t('insights.hint')}
         actions={
           <>
-            <Button variant="secondary" busy={gen.isPending} onClick={() => gen.mutate()}>
+            <Button variant="secondary" icon={RefreshCw} busy={gen.isPending} onClick={() => gen.mutate()}>
               {t('insights.generate')}
             </Button>
             {can('release_messages') && (
-              <Button variant="secondary" busy={progress.isPending} onClick={() => progress.mutate()}>
+              <Button variant="secondary" icon={Send} busy={progress.isPending} onClick={() => progress.mutate()}>
                 {t('insights.draftProgress')}
               </Button>
             )}
@@ -291,7 +296,9 @@ export function InsightsPage() {
       {q.isLoading ? (
         <Loading />
       ) : !q.data?.length ? (
-        <Empty>{t('insights.none')}</Empty>
+        <EmptyState icon={NotebookPen} title={t('insights.none')}>
+          {t('insights.noneHint')}
+        </EmptyState>
       ) : (
         <div className="space-y-3">
           {q.data.map((i) => (
@@ -314,8 +321,8 @@ export function InsightsPage() {
                   onChange={(e) => setEdits((x) => ({ ...x, [i.id]: { ...x[i.id], ar: e.target.value } }))}
                 />
               </div>
-              <details className="mt-2 text-xs">
-                <summary className="cursor-pointer text-slate-600">
+              <details className="mt-3 text-xs">
+                <summary className="text-slate-500">
                   {t('insights.facts')} · {i.rule}
                 </summary>
                 <pre className="mt-1 overflow-auto rounded-sm bg-slate-50 p-2" dir="ltr">
@@ -323,7 +330,7 @@ export function InsightsPage() {
                 </pre>
               </details>
               <div className="mt-3 flex gap-2">
-                <Button size="sm" onClick={() => review.mutate({ id: i.id, decision: 'approved' })}>
+                <Button size="sm" icon={BadgeCheck} onClick={() => review.mutate({ id: i.id, decision: 'approved' })}>
                   {t('insights.approve')}
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => review.mutate({ id: i.id, decision: 'rejected' })}>

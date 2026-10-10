@@ -1,9 +1,27 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import {
+  CalendarClock,
+  ClipboardCheck,
+  Eye,
+  FileText,
+  type LucideIcon,
+  Medal,
+  MessageSquare,
+  NotebookPen,
+  PartyPopper,
+  PenLine,
+  Send,
+  ShieldCheck,
+  Siren,
+  Star,
+  Users,
+  X,
+} from 'lucide-react'
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 
-import { Alert, Badge, Button, Card, Empty, Loading, PageHeader, SelectInput, TableWrap, TextArea, TextInput, cx, useToast } from '@/components/ui'
+import { Alert, Badge, Button, ButtonLink, Card, ChoiceCard, EmptyState, InfoNote, Loading, PageHeader, SelectInput, Step, TableWrap, Tabs, TextArea, TextInput, cx, useToast } from '@/components/ui'
 import { api, downloadBlob, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDateTime } from '@/lib/format'
@@ -15,78 +33,68 @@ const NEGATIVE = new Set(['attendance_concern', 'non_selection', 'behaviour_note
 // Filled in automatically from the student, guardian, edition and squad.
 const AUTO_VARS = new Set(['guardian_name', 'child_name', 'child_names', 'school_name', 'portal_link', 'opt_out_link', 'edition_name', 'competition_name', 'event_date', 'venue', 'squad_name', 'result_summary', 'team_members', 'progress_summary'])
 
+const STATUS_TABS = ['', 'draft', 'released', 'completed', 'manual_handoff', 'cancelled'] as const
+
 export default function MessagesPage() {
   const { t } = useTranslation()
-  const [status, setStatus] = useState('')
+  const { can } = useAuth()
+  const [params, setParams] = useSearchParams()
+  const status = (params.get('status') ?? '') as (typeof STATUS_TABS)[number]
   const q = useQuery({ queryKey: ['messages', status], queryFn: () => api<Message[]>(`/messages${status ? `?status=${status}` : ''}`) })
   const optOuts = useQuery({ queryKey: ['opt-outs'], queryFn: () => api<{ by_category: Record<string, number> }>('/messages-opt-outs') })
   return (
     <>
       <PageHeader
+        icon={MessageSquare}
         title={t('messages.title')}
+        subtitle={can('release_messages') ? t('messages.introApprover') : t('messages.introTeacher')}
         actions={
-          <Link to="/messages/new">
-            <Button>{t('messages.compose')}</Button>
-          </Link>
+          <ButtonLink to="/messages/new" icon={PenLine}>
+            {t('messages.compose')}
+          </ButtonLink>
         }
       />
       <div className="grid gap-4 lg:grid-cols-4">
-        <Card className="lg:col-span-3">
-          <div className="mb-3 max-w-xs">
-            <SelectInput label={t('common.status')} value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">{t('common.all')}</option>
-              {['draft', 'released', 'completed', 'manual_handoff', 'cancelled'].map((s) => (
-                <option key={s} value={s}>
-                  {t(`messageStatus.${s}` as 'messageStatus.draft')}
-                </option>
-              ))}
-            </SelectInput>
-          </div>
+        <div className="lg:col-span-3">
+          <Tabs
+            value={status}
+            onChange={(v) => setParams(v ? { status: v } : {})}
+            tabs={STATUS_TABS.map((s) => ({ id: s, label: s ? t(`messages.tabs.${s}`) : t('common.all') }))}
+          />
           {q.isLoading ? (
             <Loading />
           ) : !q.data?.length ? (
-            <Empty />
+            <EmptyState icon={MessageSquare} title={t('messages.none')} action={<ButtonLink to="/messages/new" variant="secondary" icon={PenLine}>{t('messages.compose')}</ButtonLink>}>
+              {t('messages.noneHint')}
+            </EmptyState>
           ) : (
-            <TableWrap>
-              <table>
-                <thead>
-                  <tr>
-                    <th>{t('common.name')}</th>
-                    <th>{t('messages.type')}</th>
-                    <th>{t('common.status')}</th>
-                    <th>{t('common.date')}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {q.data.map((m) => (
-                    <tr key={m.id}>
-                      <td>
-                        <Link to={`/messages/${m.id}`} className={cx('font-medium hover:underline', m.is_emergency ? 'text-red-700' : 'text-brand')}>
-                          {m.title}
-                        </Link>
-                        <div className="text-xs text-slate-500">{m.student_ids.length}</div>
-                      </td>
-                      <td>
-                        {t(`messageTypes.${m.message_type}` as 'messageTypes.logistics')}
-                        {m.is_negative && <Badge tone="amber" className="ms-1">✋</Badge>}
-                      </td>
-                      <td>
-                        <Badge tone={m.status === 'completed' ? 'green' : m.status === 'released' ? 'blue' : 'slate'}>{t(`messageStatus.${m.status}` as 'messageStatus.draft')}</Badge>
-                      </td>
-                      <td className="text-xs">{fmtDateTime(m.released_at ?? m.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </TableWrap>
+            <ul className="card divide-y divide-slate-100 p-0">
+              {q.data.map((m) => (
+                <li key={m.id}>
+                  <Link to={`/messages/${m.id}`} className="flex flex-wrap items-center gap-3 px-5 py-3.5 hover:bg-slate-50">
+                    <span className="min-w-0 flex-1">
+                      <span className={cx('block font-medium', m.is_emergency ? 'text-red-700' : 'text-slate-900')}>{m.title}</span>
+                      <span className="block text-sm text-slate-500">
+                        {t(`messageTypes.${m.message_type}` as 'messageTypes.logistics')} · {fmtDateTime(m.released_at ?? m.created_at)}
+                        {m.student_ids.length > 0 && ` · ${t('home.members', { n: m.student_ids.length })}`}
+                      </span>
+                    </span>
+                    {m.is_negative && <Badge tone="amber">{t('messageStatus.manual_handoff')}</Badge>}
+                    <Badge tone={m.status === 'completed' ? 'green' : m.status === 'released' ? 'blue' : m.status === 'draft' ? 'amber' : 'slate'}>
+                      {t(`messageStatus.${m.status}` as 'messageStatus.draft')}
+                    </Badge>
+                  </Link>
+                </li>
+              ))}
+            </ul>
           )}
-        </Card>
-        <Card title={t('messages.optOutsHeading')}>
-          <ul className="space-y-1 text-sm">
+        </div>
+        <Card title={t('messages.optOutsHeading')} description={t('messages.optOutsHint')} className="self-start">
+          <ul className="space-y-1.5 text-sm">
             {Object.entries(optOuts.data?.by_category ?? {}).map(([k, n]) => (
-              <li key={k} className="flex justify-between">
+              <li key={k} className="flex justify-between gap-2">
                 <span>{t(`messageTypes.${k}` as 'messageTypes.logistics')}</span>
-                <span>{n}</span>
+                <span className="font-medium tabular-nums">{n}</span>
               </li>
             ))}
             {!Object.keys(optOuts.data?.by_category ?? {}).length && <li className="text-slate-500">{t('common.none')}</li>}
@@ -97,10 +105,22 @@ export default function MessagesPage() {
   )
 }
 
+const TYPE_ICONS: Record<string, LucideIcon> = {
+  selection_notice: Star,
+  logistics: CalendarClock,
+  consent_request: ShieldCheck,
+  result_notification: Medal,
+  progress_report: NotebookPen,
+  celebration: PartyPopper,
+  attendance_concern: ClipboardCheck,
+  non_selection: Users,
+  behaviour_note: FileText,
+}
+
 export function ComposePage() {
   const { t } = useTranslation()
   const navigate = useNavigate()
-  const [type, setType] = useState<string>('logistics')
+  const [type, setType] = useState<string>('')
   const templates = useQuery({ queryKey: ['templates'], queryFn: () => api<Template[]>('/message-templates') })
   const squads = useSquads()
   const editions = useEditions()
@@ -117,6 +137,7 @@ export function ComposePage() {
   })
   const template = useMemo(() => (templates.data ?? []).find((x) => x.message_type === type && x.status === 'approved'), [templates.data, type])
   const manualVars = (template?.variables ?? []).filter((v) => !AUTO_VARS.has(v))
+  const hasAudience = students.length > 0 || !!squadId
   const draft = useMutation({
     mutationFn: () =>
       api<{ message: Message; families_opted_out_of_category: number }>('/messages/draft', {
@@ -134,64 +155,77 @@ export function ComposePage() {
   })
   return (
     <>
-      <PageHeader title={t('messages.compose')} />
-      <Card>
-        <form
-          className="grid gap-4 lg:grid-cols-2"
-          onSubmit={(e) => {
-            e.preventDefault()
-            draft.mutate()
-          }}
-        >
-          <SelectInput label={t('messages.type')} value={type} onChange={(e) => setType(e.target.value)}>
-            {TYPES.map((x) => (
-              <option key={x} value={x}>
-                {t(`messageTypes.${x}`)}
-              </option>
-            ))}
-          </SelectInput>
-          <TextInput label={t('common.name')} value={title} onChange={(e) => setTitle(e.target.value)} />
-          {NEGATIVE.has(type) && (
-            <div className="lg:col-span-2">
+      <PageHeader icon={PenLine} title={t('messages.compose')} subtitle={t('messages.composeIntro')} back={{ to: '/messages', label: t('messages.title') }} />
+      <form
+        className="max-w-3xl space-y-3"
+        onSubmit={(e) => {
+          e.preventDefault()
+          draft.mutate()
+        }}
+      >
+        <Step n={1} title={type ? t('messages.typeChosen', { type: t(`messageTypes.${type}` as 'messageTypes.logistics') }) : t('messages.whatKind')} done={!!type}>
+          {type ? (
+            <Button size="sm" variant="secondary" onClick={() => setType('')}>
+              {t('common.change')}
+            </Button>
+          ) : (
+            <div role="radiogroup" aria-label={t('messages.type')} className="grid gap-2 sm:grid-cols-2">
+              {TYPES.map((x) => (
+                <ChoiceCard key={x} selected={false} onSelect={() => setType(x)} icon={TYPE_ICONS[x]} title={t(`messageTypes.${x}`)} meta={t(`messageTypeHelp.${x}`)} />
+              ))}
+            </div>
+          )}
+          {type && NEGATIVE.has(type) && (
+            <div className="mt-3">
               <Alert tone="warn">{t('messages.negativeNotice')}</Alert>
             </div>
           )}
-          {!template && <Alert tone="error">{t('messages.templateNotApproved')}</Alert>}
-          <SelectInput label={t('messages.squad')} value={squadId} onChange={(e) => setSquadId(e.target.value)}>
-            <option value="" />
-            {(squads.data ?? []).map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.name}
-              </option>
-            ))}
-          </SelectInput>
-          <SelectInput label={t('messages.edition')} value={editionId} onChange={(e) => setEditionId(e.target.value)}>
-            <option value="" />
-            {(editions.data ?? []).map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.name}
-              </option>
-            ))}
-          </SelectInput>
-          <div className="lg:col-span-2">
-            <TextInput label={t('messages.recipients')} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('students.searchPlaceholder')} />
-            <div className="mt-2 flex flex-wrap gap-1">
-              {students.map((s) => (
-                <Badge key={s.id} tone="brand">
-                  {s.display_name}
-                  <button type="button" className="ms-1" aria-label={`${t('common.remove')} ${s.display_name}`} onClick={() => setStudents((x) => x.filter((y) => y.id !== s.id))}>
-                    ✕
-                  </button>
-                </Badge>
-              ))}
+          {type && templates.isSuccess && !template && (
+            <div className="mt-3">
+              <Alert tone="error">{t('messages.templateNotApproved')}</Alert>
             </div>
+          )}
+        </Step>
+        <Step n={2} title={t('messages.whoFor')} hint={t('messages.whoForHint')} active={!!type} done={hasAudience}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <SelectInput label={t('messages.squad')} value={squadId} onChange={(e) => setSquadId(e.target.value)}>
+              <option value="">{t('messages.noSquad')}</option>
+              {(squads.data ?? []).map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.name}
+                </option>
+              ))}
+            </SelectInput>
+            <SelectInput label={t('messages.edition')} hint={t('messages.editionHint')} value={editionId} onChange={(e) => setEditionId(e.target.value)}>
+              <option value="">{t('messages.noEdition')}</option>
+              {(editions.data ?? []).map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.name}
+                </option>
+              ))}
+            </SelectInput>
+          </div>
+          <div className="mt-4">
+            <TextInput label={t('messages.recipients')} value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t('students.searchPlaceholder')} />
+            {students.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {students.map((s) => (
+                  <Badge key={s.id} tone="brand">
+                    {s.display_name}
+                    <button type="button" className="ms-0.5 rounded-full p-0.5 hover:bg-brand/10" aria-label={`${t('common.remove')} ${s.display_name}`} onClick={() => setStudents((x) => x.filter((y) => y.id !== s.id))}>
+                      <X aria-hidden className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+            )}
             {found.data && search.length >= 2 && (
-              <ul className="mt-1 rounded-lg border border-slate-200">
+              <ul className="mt-1 divide-y divide-slate-100 rounded-xl border border-slate-200">
                 {found.data.items.map((s) => (
                   <li key={s.id}>
                     <button
                       type="button"
-                      className="w-full px-3 py-1.5 text-start text-sm hover:bg-slate-50"
+                      className="w-full px-3 py-2 text-start text-sm hover:bg-slate-50"
                       onClick={() => {
                         setStudents((x) => (x.some((y) => y.id === s.id) ? x : [...x, s]))
                         setSearch('')
@@ -204,22 +238,31 @@ export function ComposePage() {
               </ul>
             )}
           </div>
-          {manualVars.length > 0 && (
-            <fieldset className="grid gap-3 lg:col-span-2 lg:grid-cols-2">
-              <legend className="mb-1 text-sm font-semibold">{t('messages.variables')}</legend>
-              {manualVars.map((v) => (
-                <TextInput key={v} label={v.replace(/_/g, ' ')} value={vars[v] ?? ''} onChange={(e) => setVars((x) => ({ ...x, [v]: e.target.value }))} dir={v.endsWith('_ar') ? 'rtl' : undefined} />
-              ))}
-            </fieldset>
-          )}
-          {draft.error && <Alert tone="error">{errorMessage(draft.error)}</Alert>}
-          <div className="lg:col-span-2">
-            <Button type="submit" busy={draft.isPending} disabled={!template || (!students.length && !squadId)}>
-              {t('messages.saveDraft')}
-            </Button>
+        </Step>
+        <Step n={3} title={t('messages.variables')} hint={manualVars.length ? t('messages.variablesHint') : t('messages.noVariables')} active={!!type && hasAudience}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {manualVars.map((v) => (
+              <TextInput
+                key={v}
+                label={t(`messageVars.${v}` as 'messageVars.meet_time', { defaultValue: v.replace(/_/g, ' ') })}
+                value={vars[v] ?? ''}
+                onChange={(e) => setVars((x) => ({ ...x, [v]: e.target.value }))}
+                dir={v.endsWith('_ar') ? 'rtl' : undefined}
+              />
+            ))}
+            <TextInput label={t('messages.titleLabel')} hint={t('messages.titleHint')} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={type ? t(`messageTypes.${type}` as 'messageTypes.logistics') : ''} />
           </div>
-        </form>
-      </Card>
+          {draft.error && (
+            <div className="mt-3">
+              <Alert tone="error">{errorMessage(draft.error)}</Alert>
+            </div>
+          )}
+          <Button type="submit" size="lg" className="mt-5 w-full" busy={draft.isPending} disabled={!template || !hasAudience}>
+            {t('messages.saveDraft')}
+          </Button>
+          <p className="mt-2 text-center text-sm text-slate-500">{t('messages.saveDraftHint')}</p>
+        </Step>
+      </form>
     </>
   )
 }
@@ -282,6 +325,7 @@ export function MessageDetailPage() {
     <>
       {toast}
       <PageHeader
+        back={{ to: '/messages', label: t('messages.title') }}
         title={m.title}
         subtitle={
           <span className="flex flex-wrap items-center gap-2">
@@ -305,25 +349,37 @@ export function MessageDetailPage() {
           )
         }
       />
-      {m.is_negative && <Alert tone="warn">{t('messages.negativeNotice')}</Alert>}
+      {m.is_negative && (
+        <div className="mb-4">
+          <Alert tone="warn">{t('messages.negativeNotice')}</Alert>
+        </div>
+      )}
       {isDraft && (
-        <Card title={t('common.preview')} className="mt-4">
-          <Button variant="secondary" onClick={() => doPreview.mutate()} busy={doPreview.isPending}>
-            {t('common.preview')}
-          </Button>
-          {preview && <PreviewPanel p={preview} />}
-          {preview && !preview.render_errors.length && (
-            <div className="mt-4 rounded-lg border border-slate-200 p-3">
-              {m.is_negative ? (
+        <div className="max-w-5xl space-y-3">
+          <Step n={1} title={t('messages.checkTitle')} hint={t('messages.checkHint')} done={!!preview && !preview.render_errors.length}>
+            <Button variant={preview ? 'secondary' : 'primary'} icon={Eye} onClick={() => doPreview.mutate()} busy={doPreview.isPending}>
+              {preview ? t('messages.previewAgain') : t('messages.showPreview')}
+            </Button>
+            {preview && <PreviewPanel p={preview} />}
+          </Step>
+          <Step
+            n={2}
+            title={m.is_negative ? t('messages.handoffTitle') : t('messages.sendTitle')}
+            hint={m.is_negative ? t('messages.handoffHint') : can('release_messages') ? t('messages.sendHint') : t('messages.waitForApprover')}
+            active={!!preview && !preview.render_errors.length}
+          >
+            {preview &&
+              (m.is_negative ? (
                 <Button onClick={() => handoff.mutate()} busy={handoff.isPending}>
                   {t('messages.handoff')}
                 </Button>
               ) : can('release_messages') ? (
                 <div className="flex flex-wrap items-end gap-3">
-                  <div className="w-64">
-                    <TextInput label={t('messages.schedule')} type="datetime-local" value={schedule} onChange={(e) => setSchedule(e.target.value)} />
+                  <div className="w-64 max-w-full">
+                    <TextInput label={t('messages.schedule')} hint={t('messages.scheduleHint')} type="datetime-local" value={schedule} onChange={(e) => setSchedule(e.target.value)} />
                   </div>
                   <Button
+                    icon={Send}
                     busy={release.isPending}
                     onClick={() => {
                       if (window.confirm(t('messages.releaseConfirm', { n: preview.family_count }))) release.mutate()
@@ -332,12 +388,9 @@ export function MessageDetailPage() {
                     {t('messages.release')}
                   </Button>
                 </div>
-              ) : (
-                <p className="text-sm text-slate-600">{t('messages.previewFirst')}</p>
-              )}
-            </div>
-          )}
-        </Card>
+              ) : null)}
+          </Step>
+        </div>
       )}
       {delivery.data && (
         <Card
@@ -466,9 +519,11 @@ export function EmergencyPage() {
   })
   return (
     <>
-      <PageHeader title={t('emergency.title')} />
-      <div className="rounded-xl border-2 border-red-600 bg-red-50 p-4">
-        <p className="mb-4 font-medium text-red-900">⚠ {t('emergency.warning')}</p>
+      <PageHeader icon={Siren} title={t('emergency.title')} subtitle={t('emergency.intro')} />
+      <div className="card border-red-200">
+        <div className="mb-5">
+          <Alert tone="error">{t('emergency.warning')}</Alert>
+        </div>
         <div className="grid gap-4 lg:grid-cols-2">
           <TextInput label={t('emergency.reason')} value={form.reason} onChange={(e) => setForm({ ...form, reason: e.target.value })} required minLength={10} />
           <TextInput label={t('common.name')} value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
@@ -530,7 +585,10 @@ export function TemplatesPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('templates.title')} subtitle={t('templates.variablesHint')} />
+      <PageHeader icon={FileText} title={t('templates.title')} subtitle={t('templates.intro')} />
+      <div className="mb-4">
+        <InfoNote>{t('templates.variablesHint')}</InfoNote>
+      </div>
       {editing && (
         <Card title={`${editing.key} — ${t('templates.newVersion')}`} className="mb-4">
           <div className="grid gap-3 lg:grid-cols-2">

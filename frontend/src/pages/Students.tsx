@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
+import { GraduationCap } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router-dom'
 
-import { Alert, Badge, Card, Empty, Loading, PageHeader, SelectInput, TableWrap, TextInput } from '@/components/ui'
+import { Alert, Card, EmptyState, Loading, PageHeader, SelectInput, TableWrap, TextInput } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
 import type { Page, Student } from '@/lib/types'
 
@@ -19,7 +20,7 @@ export default function StudentsPage() {
   const res = useQuery({ queryKey: ['students', q, year, flag], queryFn: () => api<Page<Student>>(`/students?${params}`) })
   return (
     <>
-      <PageHeader title={t('students.title')} />
+      <PageHeader icon={GraduationCap} title={t('students.title')} subtitle={t('students.intro')} />
       <Card>
         <div className="mb-4 grid gap-3 sm:grid-cols-3">
           <TextInput label={t('common.search')} placeholder={t('students.searchPlaceholder')} value={q} onChange={(e) => setQ(e.target.value)} />
@@ -45,7 +46,9 @@ export default function StudentsPage() {
         ) : res.error ? (
           <Alert tone="error">{errorMessage(res.error)}</Alert>
         ) : res.data!.items.length === 0 ? (
-          <Empty />
+          <EmptyState icon={GraduationCap} title={t('students.none')}>
+            {t('students.noneHint')}
+          </EmptyState>
         ) : (
           <TableWrap>
             <table>
@@ -69,16 +72,12 @@ export default function StudentsPage() {
                     </td>
                     <td>{s.year_group}</td>
                     <td>{s.house ?? '—'}</td>
-                    <td>
-                      <Badge>{s.external_mis_id}</Badge>
-                    </td>
+                    <td className="text-slate-500">{s.external_mis_id}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            <p className="mt-2 text-xs text-slate-500">
-              {res.data!.items.length} / {res.data!.total}
-            </p>
+            <p className="mt-3 text-sm text-slate-500">{t('students.showing', { n: res.data!.items.length, m: res.data!.total })}</p>
           </TableWrap>
         )}
       </Card>
