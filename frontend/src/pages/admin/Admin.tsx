@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { FileUp, History, Package, Settings, Upload, UserCog, Wallet } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Alert, Badge, Button, Card, Empty, Loading, PageHeader, SelectInput, TableWrap, TextInput, useToast } from '@/components/ui'
+import { Alert, Badge, Button, Card, Empty, InfoNote, Loading, PageHeader, SelectInput, Step, TableWrap, TextInput, useToast } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDate, fmtDateTime, fmtMoney } from '@/lib/format'
@@ -26,6 +27,13 @@ interface Batch {
 
 export function ImportsPage() {
   const { t } = useTranslation()
+  // "guardian1_email" → "Parent/carer 1: Email"; plain names for the student columns.
+  const fieldLabel = (target: string) => {
+    const m = /^guardian(\d)_(\w+)$/.exec(target)
+    return m
+      ? t('imports.guardianField', { n: m[1], field: t(`importFields.guardian_${m[2]}` as 'importFields.guardian_name', { defaultValue: m[2] }) })
+      : t(`importFields.${target}` as 'importFields.given_name', { defaultValue: target })
+  }
   const qc = useQueryClient()
   const [file, setFile] = useState<File | null>(null)
   const [leavers, setLeavers] = useState(false)
@@ -61,34 +69,37 @@ export function ImportsPage() {
   })
   return (
     <>
-      <PageHeader title={t('imports.title')} subtitle={t('imports.hint')} />
-      <Card>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="flex flex-col gap-1">
-            <label htmlFor="csv" className="text-sm font-medium">
-              {t('imports.file')}
-            </label>
-            <input id="csv" type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="text-sm" />
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={leavers} onChange={(e) => setLeavers(e.target.checked)} /> {t('imports.markLeavers')}
+      <PageHeader icon={Upload} title={t('imports.title')} subtitle={t('imports.hint')} />
+      <div className="max-w-5xl space-y-3">
+      <Step n={1} title={t('imports.uploadTitle')} hint={t('imports.uploadHint')} done={!!batch}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label htmlFor="csv" className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50/60 p-6 text-center hover:border-brand/50">
+            <FileUp aria-hidden className="h-6 w-6 text-slate-400" />
+            <span className="text-sm font-medium text-slate-800">{file ? file.name : t('imports.file')}</span>
+            <span className="text-xs text-slate-500">{t('imports.fileHint')}</span>
+            <input id="csv" type="file" accept=".csv,text/csv" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="sr-only" />
           </label>
-          <div className="flex items-end">
-            <Button disabled={!file} busy={dry.isPending} onClick={() => dry.mutate()}>
-              {t('imports.dryRun')}
-            </Button>
+          <div className="flex flex-col justify-between gap-4">
+            <label className="flex items-start gap-2 text-sm text-slate-700">
+              <input type="checkbox" className="mt-0.5 h-4 w-4 accent-brand" checked={leavers} onChange={(e) => setLeavers(e.target.checked)} /> {t('imports.markLeavers')}
+            </label>
+            <div>
+              <Button disabled={!file} busy={dry.isPending} onClick={() => dry.mutate()}>
+                {t('imports.dryRun')}
+              </Button>
+            </div>
           </div>
         </div>
         {err && <div className="mt-3"><Alert tone="error">{err}</Alert></div>}
-      </Card>
+      </Step>
       {batch && (
         <>
-          <Card title={t('imports.mapping')} className="mt-4">
-            <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-4">
+          <Step n={2} title={t('imports.mapping')} hint={t('imports.mappingHint')}>
+            <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-4">
               {(fields.data?.targets ?? []).map((target) => (
                 <SelectInput
                   key={target}
-                  label={`${target}${fields.data?.required.includes(target) ? ' *' : ''}`}
+                  label={`${fieldLabel(target)}${fields.data?.required.includes(target) ? ' *' : ''}`}
                   value={mapping[target] ?? ''}
                   onChange={(e) => setMapping((m) => ({ ...m, [target]: e.target.value }))}
                 >
@@ -99,11 +110,11 @@ export function ImportsPage() {
                 </SelectInput>
               ))}
             </div>
-            <Button className="mt-3" variant="secondary" busy={dry.isPending} onClick={() => dry.mutate()}>
+            <Button className="mt-4" variant="secondary" busy={dry.isPending} onClick={() => dry.mutate()}>
               {t('imports.remap')}
             </Button>
-          </Card>
-          <Card className="mt-4">
+          </Step>
+          <Step n={3} title={t('imports.reviewTitle')} hint={t('imports.reviewHint')} done={done}>
             <div className="flex flex-wrap gap-2">
               {(['creates', 'updates', 'unchanged', 'leavers', 'errors', 'guardian_changes'] as const).map((k) => (
                 <Badge key={k} tone={k === 'errors' && batch.summary[k] ? 'red' : 'slate'}>
@@ -166,14 +177,15 @@ export function ImportsPage() {
                 {t('imports.apply')}
               </Button>
             )}
-          </Card>
+          </Step>
         </>
       )}
-      <Card title={t('imports.history')} className="mt-4">
+      </div>
+      <Card title={t('imports.history')} icon={History} className="mt-6">
         <ul className="space-y-1 text-sm">
           {(history.data ?? []).map((b) => (
             <li key={b.id}>
-              {fmtDateTime(b.created_at)} · {b.filename} · <Badge>{b.status}</Badge> · +{b.summary.creates ?? 0} / ~{b.summary.updates ?? 0}
+              {fmtDateTime(b.created_at)} · {b.filename} · <Badge>{t(`importStatus.${b.status}` as 'importStatus.committed', { defaultValue: b.status })}</Badge> · +{b.summary.creates ?? 0} / ~{b.summary.updates ?? 0}
             </li>
           ))}
         </ul>
@@ -233,7 +245,7 @@ export function InventoryPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('inventory.title')} />
+      <PageHeader icon={Package} title={t('inventory.title')} subtitle={t('inventory.intro')} />
       <Card>
         {assets.isLoading ? (
           <Loading />
@@ -257,8 +269,8 @@ export function InventoryPage() {
                     <td>
                       {a.name}
                       <div className="flex gap-1">
-                        {a.needs_reorder && <Badge tone="amber">⚠ {t('inventory.reorder')}</Badge>}
-                        {a.service_overdue && <Badge tone="red">⚠ {t('inventory.serviceDue')}</Badge>}
+                        {a.needs_reorder && <Badge tone="amber">{t('inventory.reorder')}</Badge>}
+                        {a.service_overdue && <Badge tone="red">{t('inventory.serviceDue')}</Badge>}
                       </div>
                     </td>
                     <td>{a.category}</td>
@@ -362,7 +374,7 @@ export function InventoryPage() {
               {(requests.data ?? []).map((r) => (
                 <li key={r.id} className="flex items-center justify-between gap-2">
                   <span>
-                    {r.description} × {r.quantity} <Badge>{r.status}</Badge>
+                    {r.description} × {r.quantity} <Badge>{t(`requestStatus.${r.status}` as 'requestStatus.open', { defaultValue: r.status })}</Badge>
                   </span>
                   {manage && r.status === 'open' && (
                     <span className="flex gap-1">
@@ -427,7 +439,7 @@ export function BudgetPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('budget.title')} subtitle={d.season?.name} />
+      <PageHeader icon={Wallet} title={t('budget.title')} subtitle={`${t('budget.intro')}${d.season ? ` ${t('dashboard.season')}: ${d.season.name}.` : ''}`} />
       <div className="grid gap-4 sm:grid-cols-4">
         <Card title={t('budget.envelope')}>
           <div className="text-2xl font-bold">{fmtMoney(d.season?.envelope, cur)}</div>
@@ -540,7 +552,7 @@ export function AuditPage() {
   const q = useQuery({ queryKey: ['audit', action, subject], queryFn: () => api<{ total: number; items: { id: string; at: string; actor_user_id: string | null; actor_roles: string[]; action: string; subject_type: string | null; subject_id: string | null; reason: string | null; ip: string | null }[] }>(`/audit?${params}`) })
   return (
     <>
-      <PageHeader title={t('audit.title')} subtitle={t('audit.hint')} />
+      <PageHeader icon={History} title={t('audit.title')} subtitle={t('audit.hint')} />
       <Card>
         <div className="mb-3 grid gap-3 sm:grid-cols-2">
           <TextInput label={t('audit.action')} value={action} onChange={(e) => setAction(e.target.value)} placeholder="student.read" dir="ltr" />
@@ -614,7 +626,7 @@ export function UsersPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('users.title')} />
+      <PageHeader icon={UserCog} title={t('users.title')} subtitle={t('users.intro')} />
       <Card>
         <TableWrap>
           <table>
@@ -765,7 +777,10 @@ export function SettingsPage() {
   return (
     <>
       {toast}
-      <PageHeader title={t('settings.title')} subtitle={q.data?.name} />
+      <PageHeader icon={Settings} title={t('settings.title')} subtitle={t('settings.intro')} />
+      <div className="mb-4">
+        <InfoNote>{t('settings.note')}</InfoNote>
+      </div>
       <div className="grid gap-4 lg:grid-cols-2">
         <Card title={t('settings.tierWeights')}>
           <div className="grid grid-cols-2 gap-3">

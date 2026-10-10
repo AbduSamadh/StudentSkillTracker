@@ -25,9 +25,10 @@ export function ReadinessTrace({ r, verifierName }: { r: Readiness; verifierName
         <span className="text-sm text-slate-600">{t('profile.threshold', { n: r.threshold_percent })}</span>
         <ClaimBadge type="inferred" />
       </div>
-      <details className="rounded-lg border border-slate-200 p-3" open>
-        <summary className="cursor-pointer text-sm font-semibold">{t('profile.whyScore')}</summary>
-        <p className="mt-2 text-xs text-slate-600" dir="ltr">
+      <details className="rounded-xl border border-slate-200 p-4" open>
+        <summary className="text-sm font-semibold text-slate-900">{t('profile.whyScore')}</summary>
+        <p className="mt-1 text-sm text-slate-500">{t('profile.whyScoreHint')}</p>
+        <p className="mt-2 text-xs text-slate-500" dir="ltr">
           {t('profile.formula')}: {r.formula} = {r.lines.reduce((a, l) => a + l.contribution, 0).toFixed(2)} / {r.total_weight.toFixed(2)}
         </p>
         <TableWrap>
@@ -46,8 +47,8 @@ export function ReadinessTrace({ r, verifierName }: { r: Readiness; verifierName
               {r.lines.map((l) => (
                 <tr key={l.skill_id} className={cx(l.is_gap && 'bg-amber-50')}>
                   <td>
-                    <div className="font-mono text-xs text-slate-500">{l.code}</div>
                     <div>{l.name}</div>
+                    <div className="font-mono text-[11px] text-slate-400">{l.code}</div>
                     <div className="mt-1 flex gap-1">
                       {l.is_core && <Badge tone="brand">{t('profile.core')}</Badge>}
                       <Badge>{l.inherited ? t('profile.inherited') : t('profile.override')}</Badge>
@@ -65,7 +66,10 @@ export function ReadinessTrace({ r, verifierName }: { r: Readiness; verifierName
                   <td className="text-xs">
                     {l.evidence ? (
                       <>
-                        <div>{t(`profile.sources.${l.evidence.source}` as 'profile.sources.teacher')} · {l.evidence.confidence}</div>
+                        <div>
+                          {t(`profile.sources.${l.evidence.source}` as 'profile.sources.teacher')}
+                          {l.evidence.confidence && ` · ${t(`confidence.${l.evidence.confidence}` as 'confidence.high', { defaultValue: l.evidence.confidence })}`}
+                        </div>
                         <div className="text-slate-600">{l.evidence.evidence_note}</div>
                         <div className="text-slate-500">
                           {fmtDate(l.evidence.awarded_on)}
@@ -91,8 +95,7 @@ export function ReadinessTrace({ r, verifierName }: { r: Readiness; verifierName
           <ul className="space-y-1 text-sm">
             {r.gaps.map((g) => (
               <li key={g.skill_id} className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs text-slate-500">{g.code}</span>
-                <span>{pick(g.name, null)}</span>
+                <span className="font-medium text-slate-800">{pick(g.name, null)}</span>
                 <span className="text-slate-500">
                   {t('levels.' + g.earned_level as 'levels.0')} → {t('levels.' + g.required_level as 'levels.0')}
                 </span>
@@ -110,14 +113,14 @@ export function RecommendationList({ items, kind }: { items: RecommendationItem[
   if (items.length === 0) return null
   const title = kind === 'recommended' ? t('profile.recommended') : kind === 'almost' ? t('profile.almostReady') : t('profile.notRecommended')
   return (
-    <section className="card claim-inferred space-y-3">
+    <section className="card claim-inferred space-y-3 border-dashed">
       <div className="flex items-center justify-between">
         <h3>{title}</h3>
         <ClaimBadge type="inferred" />
       </div>
       <ul className="space-y-3">
         {items.map((r) => (
-          <li key={r.edition_id} className="rounded-lg border border-slate-200 p-3">
+          <li key={r.edition_id} className="rounded-xl border border-slate-200 p-3.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div>
                 <div className="font-semibold">{r.edition_name}</div>

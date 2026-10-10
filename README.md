@@ -90,7 +90,7 @@ All configuration is environment variables prefixed `STEM_` (see `backend/app/co
 | Command | What it runs |
 |---|---|
 | `cd backend && ruff check . && ruff format --check . && mypy app` | Lint, format, types |
-| `cd backend && pytest` | 125 tests against a real Postgres as the non-superuser runtime role, so RLS is exercised |
+| `cd backend && pytest` | 129 tests against a real Postgres as the non-superuser runtime role, so RLS is exercised |
 | `cd frontend && npm run typecheck && npm test && npm run build` | Types, unit tests, production build |
 | `cd e2e && npm ci && npx playwright test` | Browser walkthrough against a seeded stack (`E2E_BASE_URL`, default `vite preview` on :4173) |
 

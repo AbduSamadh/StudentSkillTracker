@@ -14,6 +14,7 @@ from app.api.v1 import (
     capture,
     competitions,
     consents,
+    home,
     inbound,
     messages,
     operations,
@@ -104,6 +105,7 @@ async def request_context(request: Request, call_next):  # noqa: ANN001, ANN201
 
 for r in (
     auth,
+    home,
     students,
     competitions,
     squads,

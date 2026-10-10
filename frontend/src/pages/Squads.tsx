@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { CalendarDays, CalendarPlus, ClipboardCheck, Medal, Plus, Sparkles, Trophy, UsersRound } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 
-import { Alert, Badge, Button, Card, ClaimBadge, Empty, Loading, Meter, PageHeader, SelectInput, TableWrap, Tabs, TextInput, useToast } from '@/components/ui'
+import { Alert, Badge, Button, ButtonLink, Card, ClaimBadge, EmptyState, Loading, Meter, PageHeader, SelectInput, TableWrap, Tabs, TextInput, useToast } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDate, pick } from '@/lib/format'
-import { useSquad, useSquads } from '@/lib/queries'
+import { useSkills, useSquad, useSquads } from '@/lib/queries'
+import { SquadCards } from '@/pages/Home'
 import type { Page, Student } from '@/lib/types'
 
 export default function SquadsPage() {
@@ -28,18 +30,16 @@ export default function SquadsPage() {
   if (squads.error) return <Alert tone="error">{errorMessage(squads.error)}</Alert>
   return (
     <>
-      <PageHeader title={t('squads.title')} />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {squads.data!.map((s) => (
-          <Link key={s.id} to={`/squads/${s.id}`} className="card block hover:border-brand">
-            <h2>{s.name}</h2>
-            <p className="text-sm text-slate-600">{s.discipline}</p>
-          </Link>
-        ))}
-      </div>
-      {squads.data!.length === 0 && <Empty />}
+      <PageHeader icon={UsersRound} title={t('squads.title')} subtitle={t('squads.intro')} />
+      {squads.data!.length === 0 ? (
+        <EmptyState icon={UsersRound} title={t('home.noSquads')}>
+          {t('home.noSquadsHint')}
+        </EmptyState>
+      ) : (
+        <SquadCards />
+      )}
       {can('manage_squads') && (
-        <Card title={t('squads.newSquad')} className="mt-6">
+        <Card title={t('squads.newSquad')} description={t('squads.newSquadHint')} icon={Plus} className="mt-8">
           <form
             className="grid gap-3 sm:grid-cols-3"
             onSubmit={(e) => {
@@ -99,40 +99,43 @@ export function SquadDetailPage() {
     <>
       {toast}
       <PageHeader
+        back={{ to: '/squads', label: t('squads.title') }}
+        icon={UsersRound}
         title={s.name}
         subtitle={`${s.discipline ?? ''} · ${t('squads.coaches')}: ${s.coaches.map((c) => c.name).join(', ') || '—'}`}
         actions={
-          <>
-            {can('record_attendance') && (
-              <Link to={`/capture/attendance?squad=${id}`}>
-                <Button variant="secondary">{t('nav.attendance')}</Button>
-              </Link>
-            )}
-            {can('record_results') && (
-              <Link to={`/capture/result?squad=${id}`}>
-                <Button variant="secondary">{t('nav.results')}</Button>
-              </Link>
-            )}
-            {can('verify_skills') && (
-              <Link to={`/capture/tag?squad=${id}`}>
-                <Button variant="secondary">{t('nav.quickTag')}</Button>
-              </Link>
-            )}
-            <Button variant="ghost" onClick={() => void copyCalendar()}>
-              {t('squads.calendar')}
-            </Button>
-          </>
+          <Button variant="ghost" size="sm" icon={CalendarPlus} onClick={() => void copyCalendar()}>
+            {t('squads.calendar')}
+          </Button>
         }
       />
-      <Card title={t('squads.targets')} className="mb-4">
+      <div className="mb-6 flex flex-wrap gap-2">
+        {can('record_attendance') && (
+          <ButtonLink to={`/capture/attendance?squad=${id}`} variant="secondary" icon={ClipboardCheck}>
+            {t('nav.attendance')}
+          </ButtonLink>
+        )}
+        {can('verify_skills') && (
+          <ButtonLink to={`/capture/tag?squad=${id}`} variant="secondary" icon={Sparkles}>
+            {t('nav.quickTag')}
+          </ButtonLink>
+        )}
+        {can('record_results') && (
+          <ButtonLink to={`/capture/result?squad=${id}`} variant="secondary" icon={Medal}>
+            {t('capture.resultTitle')}
+          </ButtonLink>
+        )}
+      </div>
+      <Card title={t('squads.targets')} icon={Trophy} className="mb-6">
         {s.target_editions.length === 0 ? (
-          <p className="text-sm text-slate-600">{t('squads.noTargets')}</p>
+          <p className="text-sm text-slate-500">{t('squads.noTargets')}</p>
         ) : (
           <ul className="flex flex-wrap gap-2">
             {s.target_editions.map((e) => (
               <li key={e.edition_id}>
-                <Link to={`/editions/${e.edition_id}`} className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm hover:border-brand">
-                  {e.name} <span className="text-slate-500">{fmtDate(e.event_starts)}</span>
+                <Link to={`/editions/${e.edition_id}`} className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm hover:border-brand/50 hover:bg-slate-50">
+                  <CalendarDays aria-hidden className="h-4 w-4 text-slate-400" />
+                  <span className="font-medium text-slate-800">{e.name}</span> <span className="text-slate-500">{fmtDate(e.event_starts)}</span>
                 </Link>
               </li>
             ))}
@@ -209,7 +212,7 @@ function Roster({ squadId }: { squadId: string }) {
                       <Badge tone="slate">{t('squads.withdrawn')}</Badge>
                     </span>
                   ) : (
-                    <Badge tone="green">✓</Badge>
+                    <Badge tone="green">{t('squads.active')}</Badge>
                   )}
                 </td>
                 {canEdit && (
@@ -267,11 +270,13 @@ function Roster({ squadId }: { squadId: string }) {
 
 function SquadReadinessView({ squadId }: { squadId: string }) {
   const { t } = useTranslation()
+  const skills = useSkills()
+  const skillName = new Map((skills.data ?? []).map((s) => [s.code, s.name]))
   const q = useQuery({ queryKey: ['squad-readiness', squadId], queryFn: () => api<SquadReadiness>(`/squads/${squadId}/readiness`) })
   if (q.isLoading) return <Loading />
   if (q.error) return <Alert tone="error">{errorMessage(q.error)}</Alert>
   const d = q.data!
-  if (d.editions.length === 0) return <Empty>{t('squads.noTargets')}</Empty>
+  if (d.editions.length === 0) return <EmptyState icon={Trophy} title={t('squads.noTargets')}>{t('squads.noTargetsHint')}</EmptyState>
   return (
     <div className="space-y-4">
       {d.suggested_session_focus.length > 0 && (
@@ -295,7 +300,7 @@ function SquadReadinessView({ squadId }: { squadId: string }) {
                       <Link to={`/students/${s.student_id}`} className="hover:underline">
                         {s.name}
                       </Link>
-                      <span className="text-xs text-slate-500">{s.gap_codes.join(', ')}</span>
+                      <span className="text-xs text-slate-500">{s.gap_count > 0 ? t('squads.skillsToGo', { n: s.gap_count }) : t('competitions.ready')}</span>
                     </div>
                     <Meter value={s.percent} threshold={d.threshold_percent} label={s.name} />
                   </li>
@@ -313,9 +318,7 @@ function SquadReadinessView({ squadId }: { squadId: string }) {
                     {e.shared_gaps.map((g) => (
                       <li key={g.skill_id} className="rounded-lg border border-slate-200 p-2 text-sm">
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span>
-                            <span className="font-mono text-xs text-slate-500">{g.code}</span> {g.name}
-                          </span>
+                          <span className="font-medium text-slate-800">{g.name}</span>
                           {g.unblocks > 0 && <Badge tone="green">{t('squads.unblocks', { n: g.unblocks })}</Badge>}
                         </div>
                         <div className="text-xs text-slate-600">
@@ -332,7 +335,8 @@ function SquadReadinessView({ squadId }: { squadId: string }) {
                   <ul className="space-y-2 text-sm">
                     {e.clusters.map((c) => (
                       <li key={c.missing_codes.join()} className="rounded-lg bg-slate-50 p-2">
-                        <Badge tone="amber">{t('squads.skillsAway', { n: c.skills_away })}</Badge> <span className="font-mono text-xs">{c.missing_codes.join(' + ')}</span>
+                        <Badge tone="amber">{t('squads.skillsAway', { n: c.skills_away })}</Badge>{' '}
+                        <span className="text-slate-700">{c.missing_codes.map((code) => skillName.get(code) ?? code).join(' + ')}</span>
                         <div className="mt-1 text-slate-700">{c.students.map((s) => s.name).join(', ')}</div>
                       </li>
                     ))}

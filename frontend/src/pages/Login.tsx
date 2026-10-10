@@ -13,17 +13,22 @@ interface TokenOut {
   login_token: string | null
 }
 
-export function AuthFrame({ title, children }: { title: string; children: React.ReactNode }) {
+export function AuthFrame({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
+  const { t } = useTranslation()
   return (
     <div className="grid min-h-screen place-items-center bg-linear-to-b from-brand-soft to-slate-50 p-4">
       <div className="w-full max-w-md">
-        <div className="mb-4 flex justify-end">
+        <div className="mb-4 flex items-center justify-between">
+          <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <span aria-hidden className="grid h-8 w-8 place-items-center rounded-lg bg-brand text-sm font-bold text-brand-ink">S</span>
+            {t('common.appName')}
+          </span>
           <LanguageToggle />
         </div>
-        <div className="card p-6">
-          <div className="mb-5 flex items-center gap-3">
-            <span aria-hidden className="grid h-10 w-10 place-items-center rounded-xl bg-brand text-lg font-bold text-brand-ink">S</span>
+        <div className="card p-6 sm:p-8">
+          <div className="mb-6">
             <h1 className="text-xl">{title}</h1>
+            {subtitle && <p className="mt-1 text-sm text-slate-500">{subtitle}</p>}
           </div>
           {children}
         </div>
@@ -140,12 +145,12 @@ export default function Login() {
   }
 
   return (
-    <AuthFrame title={t('auth.title')}>
+    <AuthFrame title={t('auth.title')} subtitle={t('auth.subtitle')}>
       {mfa.needed ? (
         <MfaForm enrol={mfa.enrol} verify={mfa.verify} />
       ) : (
         <form onSubmit={submit} className="space-y-4">
-          <TextInput label={t('auth.school')} value={tenant} onChange={(e) => setTenant(e.target.value.trim())} required autoComplete="organization" dir="ltr" />
+          <TextInput label={t('auth.school')} hint={t('auth.schoolHint')} value={tenant} onChange={(e) => setTenant(e.target.value.trim())} required autoComplete="organization" dir="ltr" />
           {sso && (
             <>
               <Button type="button" variant="secondary" className="w-full" onClick={() => void startSso()}>

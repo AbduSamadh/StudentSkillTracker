@@ -7,7 +7,7 @@ import { useAuth } from './lib/auth'
 import { BudgetPage, AuditPage, ImportsPage, InventoryPage, SettingsPage, UsersPage } from './pages/admin/Admin'
 import { AttendancePage, ConfirmAwardsPage, QuickTagPage, ResultEntryPage } from './pages/capture/Capture'
 import CompetitionsPage, { CompetitionDetailPage, EditionDetailPage } from './pages/Competitions'
-import DashboardPage from './pages/Dashboard'
+import HomePage from './pages/Home'
 import Login, { AuthCallback, OptOutPage, ParentLogin } from './pages/Login'
 import MessagesPage, { ComposePage, EmergencyPage, MessageDetailPage, TemplatesPage } from './pages/Messages'
 import ParentHome, { ChildPage, PortalMessages, PortalPreferences, StudentHome } from './pages/portal/Portal'
@@ -33,11 +33,10 @@ function RequireCap({ cap, children }: { cap: string; children: ReactNode }) {
   return can(cap) ? <>{children}</> : <Navigate to="/" replace />
 }
 
-/** Each role lands somewhere useful: leaders on the dashboard, teachers on their squads. */
+/** Staff start on their home page (what is waiting for them); families on their portal. */
 function Home() {
-  const { can, hasRole, isStaff, me } = useAuth()
-  if (can('view_school_analytics')) return <Navigate to="/dashboard" replace />
-  if (isStaff) return <Navigate to="/squads" replace />
+  const { hasRole, isStaff, me } = useAuth()
+  if (isStaff) return <Navigate to="/home" replace />
   if (hasRole('parent')) return <Navigate to="/portal" replace />
   if (me?.student_portal) return <Navigate to="/me" replace />
   return <Navigate to="/login" replace />
@@ -65,7 +64,8 @@ export default function App() {
           </RequireAuth>
         }
       >
-        <Route path="/dashboard" element={<RequireCap cap="view_school_analytics"><DashboardPage /></RequireCap>} />
+        <Route path="/home" element={<RequireCap cap="view_roster"><HomePage /></RequireCap>} />
+        <Route path="/dashboard" element={<Navigate to="/home" replace />} />
         <Route path="/students" element={<RequireCap cap="view_roster"><StudentsPage /></RequireCap>} />
         <Route path="/students/:id" element={<RequireCap cap="view_roster"><StudentProfilePage /></RequireCap>} />
         <Route path="/squads" element={<RequireCap cap="view_roster"><SquadsPage /></RequireCap>} />
