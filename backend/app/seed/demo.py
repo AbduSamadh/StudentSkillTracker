@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
+from app.config import get_settings
 from app.db import anonymous_session, tenant_session
 from app.models import (
     Asset,
@@ -198,6 +199,8 @@ def _at(d: date, hh: int = 15) -> datetime:
 async def seed_demo() -> None:
     from app.cli import provision_tenant
 
+    if get_settings().environment == "production":
+        raise SystemExit("seed-demo creates fictional people and is refused in production.")
     tid = await provision_tenant(SLUG, "Falcon Heights Academy (demo)", "أكاديمية فالكون هايتس (تجريبية)")
     async with tenant_session(tid) as s:
         if await s.scalar(select(Student.id).limit(1)):

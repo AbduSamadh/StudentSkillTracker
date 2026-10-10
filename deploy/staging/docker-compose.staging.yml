@@ -1,0 +1,34 @@
+# Staging on one server: the same stack as docker-compose.yml, in staging mode, behind Caddy for
+# HTTPS. deploy/staging/setup.sh runs it as:
+#   docker compose -f docker-compose.yml -f deploy/staging/docker-compose.staging.yml up -d --build
+# Staging holds only the fictional demo school (spec §10.3). Settings and generated secrets live in
+# the server's .env, which setup.sh writes once.
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      STAGING_DOMAIN: ${STAGING_DOMAIN:?set STAGING_DOMAIN to the DNS name of this server}
+    volumes:
+      - ./deploy/staging/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [web]
+
+  # Only Caddy is reachable from outside; the app's own port stays on the internal network.
+  web:
+    ports: !reset []
+    restart: unless-stopped
+  api:
+    restart: unless-stopped
+  worker:
+    restart: unless-stopped
+  db:
+    restart: unless-stopped
+  redis:
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

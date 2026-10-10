@@ -1,0 +1,7 @@
+# Caddy terminates HTTPS for the staging site. For a public DNS name it obtains and renews a free
+# Let's Encrypt certificate on its own; for "localhost" (CI) it uses its internal test CA.
+{$STAGING_DOMAIN} {
+	encode zstd gzip
+	header Strict-Transport-Security "max-age=31536000"
+	reverse_proxy web:8080
+}
