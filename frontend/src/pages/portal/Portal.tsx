@@ -3,8 +3,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Link, useParams } from 'react-router-dom'
 
+import { CalendarDays, ChevronRight, HeartHandshake, Inbox, Medal, ShieldCheck, SlidersHorizontal, Sparkles, TriangleAlert } from 'lucide-react'
+
 import { RecommendationList } from '@/components/Readiness'
-import { Alert, Badge, Button, Card, ClaimBadge, Empty, Loading, PageHeader, SelectInput, TextArea, useToast } from '@/components/ui'
+import { Alert, Badge, Button, Card, ClaimBadge, Empty, EmptyState, Loading, PageHeader, Section, SelectInput, TextArea, TodoItem, useToast } from '@/components/ui'
 import { api, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDate, fmtDateTime, fmtMoney, pick } from '@/lib/format'
@@ -31,26 +33,82 @@ interface ChildOverview {
   pending_consent_requests: { id: string; purpose: string; edition_id: string | null; created_at: string }[]
 }
 
+function ChildCard({ id, name, year }: { id: string; name: string; year: number }) {
+  const { t } = useTranslation()
+  const q = useQuery({ queryKey: ['portal-child', id], queryFn: () => api<ChildOverview>(`/portal/children/${id}`) })
+  const d = q.data
+  const next = d?.upcoming_events[0]
+  return (
+    <Link to={`/portal/children/${id}`} className="group card flex min-w-0 flex-col gap-4 transition hover:border-brand/40 hover:shadow-raised">
+      <div className="flex items-center gap-3">
+        <span aria-hidden className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-brand-soft text-base font-semibold text-brand">
+          {(d ? pick(d.student.name, d.student.name_ar) : name).slice(0, 1)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="font-semibold text-slate-900">{d ? pick(d.student.name, d.student.name_ar) : name}</div>
+          <div className="text-sm text-slate-500">{t('common.year', { n: year })}</div>
+        </div>
+        <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-brand rtl:rotate-180" />
+      </div>
+      {d && (
+        <ul className="space-y-2 text-sm text-slate-600">
+          {d.pending_consent_requests.length > 0 && (
+            <li className="flex items-start gap-2 font-medium text-amber-800">
+              <TriangleAlert aria-hidden className="mt-0.5 h-4 w-4 shrink-0" />
+              {t('portal.needsReply', { count: d.pending_consent_requests.length })}
+            </li>
+          )}
+          <li className="flex items-start gap-2">
+            <CalendarDays aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            {next ? (
+              <span className="min-w-0">
+                <span className="block text-slate-800" dir="auto">
+                  {next.name}
+                </span>
+                <span className="block text-slate-500">{t('home.nextOn', { date: fmtDate(next.starts, { day: 'numeric', month: 'short' }) })}</span>
+              </span>
+            ) : (
+              <span>{t('portal.noUpcoming')}</span>
+            )}
+          </li>
+          <li className="flex items-start gap-2">
+            <Sparkles aria-hidden className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+            {t('portal.skillsCount', { n: d.skills.length })}
+          </li>
+        </ul>
+      )}
+    </Link>
+  )
+}
+
 export default function ParentHome() {
   const { t } = useTranslation()
   const { me } = useAuth()
+  const messages = useQuery({ queryKey: ['portal-messages'], queryFn: () => api<{ delivery_id: string; opened_at: string | null }[]>('/portal/messages') })
   if (!me) return <Loading />
+  const unread = (messages.data ?? []).filter((m) => !m.opened_at).length
   return (
-    <>
-      <PageHeader title={t('portal.welcome', { name: me.display_name })} />
-      {me.children.length === 0 ? (
-        <Empty />
-      ) : (
-        <div className="grid gap-4 sm:grid-cols-2">
-          {me.children.map((c) => (
-            <Link key={c.id} to={`/portal/children/${c.id}`} className="card block hover:border-brand">
-              <h2>{c.name}</h2>
-              <p className="text-sm text-slate-600">{t('common.year', { n: c.year_group })}</p>
-            </Link>
-          ))}
+    <div className="space-y-8">
+      <PageHeader title={t('portal.welcome', { name: me.display_name })} subtitle={t('portal.intro')} />
+      {unread > 0 && (
+        <div className="card p-0">
+          <TodoItem to="/portal/messages" icon={Inbox} count={unread} label={t('portal.unread')} action={t('common.open')} />
         </div>
       )}
-    </>
+      <Section title={t('nav.myChildren')}>
+        {me.children.length === 0 ? (
+          <EmptyState icon={HeartHandshake} title={t('portal.noChildren')}>
+            {t('portal.noChildrenHint')}
+          </EmptyState>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            {me.children.map((c) => (
+              <ChildCard key={c.id} id={c.id} name={c.name} year={c.year_group} />
+            ))}
+          </div>
+        )}
+      </Section>
+    </div>
   )
 }
 
@@ -58,8 +116,7 @@ function SkillsByDomain({ skills, name }: { skills: PlainSkill[]; name: string }
   const { t } = useTranslation()
   const domains = [...new Set(skills.map((s) => s.domain))]
   return (
-    <Card title={t('portal.skills', { name })} actions={<ClaimBadge type="measured" />}>
-      <p className="mb-3 text-sm text-slate-600">{t('portal.skillsHint')}</p>
+    <Card title={t('portal.skills', { name })} description={t('portal.skillsHint')} icon={Sparkles} actions={<ClaimBadge type="measured" />}>
       {skills.length === 0 ? (
         <Empty>{t('portal.noSkills')}</Empty>
       ) : (
@@ -125,9 +182,9 @@ export function ChildPage() {
   return (
     <>
       {toast}
-      <PageHeader title={pick(d.student.name, d.student.name_ar)} subtitle={t('common.year', { n: d.student.year_group })} />
+      <PageHeader back={{ to: '/portal', label: t('nav.myChildren') }} title={pick(d.student.name, d.student.name_ar)} subtitle={t('common.year', { n: d.student.year_group })} />
       {d.pending_consent_requests.length > 0 && (
-        <Card title={t('portal.pending')} className="mb-4 border-amber-300">
+        <Card title={t('portal.pending')} description={t('portal.pendingHint')} icon={TriangleAlert} className="mb-4 border-amber-300 bg-amber-50/40">
           <ul className="space-y-2">
             {d.pending_consent_requests.map((r) => (
               <li key={r.id} className="flex flex-wrap items-center justify-between gap-2">
@@ -146,7 +203,7 @@ export function ChildPage() {
         </Card>
       )}
       <div className="grid gap-4 lg:grid-cols-2">
-        <Card title={t('portal.upcoming')}>
+        <Card title={t('portal.upcoming')} icon={CalendarDays}>
           {d.upcoming_events.length === 0 ? (
             <p className="text-sm text-slate-600">{t('portal.noUpcoming')}</p>
           ) : (
@@ -169,9 +226,9 @@ export function ChildPage() {
           )}
         </Card>
         <SkillsByDomain skills={d.skills} name={pick(d.student.name, d.student.name_ar).split(' ')[0]} />
-        <Card title={t('portal.results')} actions={<ClaimBadge type="measured" />}>
+        <Card title={t('portal.results')} icon={Medal} actions={<ClaimBadge type="measured" />}>
           {d.results.length === 0 ? (
-            <Empty />
+            <Empty>{t('portal.noResults')}</Empty>
           ) : (
             <ul className="space-y-2 text-sm">
               {d.results.map((r, i) => (
@@ -185,7 +242,7 @@ export function ChildPage() {
             </ul>
           )}
         </Card>
-        <Card title={t('portal.consents')}>
+        <Card title={t('portal.consents')} description={t('portal.consentsHint')} icon={ShieldCheck}>
           <ul className="space-y-2">
             {d.consents.map((c) => (
               <li key={c.purpose} className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 pb-2">
@@ -241,11 +298,11 @@ export function PortalMessages() {
   const read = useMutation({ mutationFn: (id: string) => api(`/portal/messages/${id}/read`, { method: 'POST' }), onSuccess: () => void qc.invalidateQueries({ queryKey: ['portal-messages'] }) })
   return (
     <>
-      <PageHeader title={t('portal.messages')} />
+      <PageHeader icon={Inbox} title={t('portal.messages')} subtitle={t('portal.messagesIntro')} />
       {q.isLoading ? (
         <Loading />
       ) : !q.data?.length ? (
-        <Empty>{t('portal.noMessages')}</Empty>
+        <EmptyState icon={Inbox} title={t('portal.noMessages')} />
       ) : (
         <ul className="space-y-3">
           {q.data.map((m) => (
@@ -291,7 +348,7 @@ export function PortalPreferences() {
   return (
     <>
       {toast}
-      <PageHeader title={t('portal.preferences')} />
+      <PageHeader icon={SlidersHorizontal} title={t('portal.preferences')} subtitle={t('portal.preferencesIntro')} />
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
           <div className="grid gap-3">
@@ -310,12 +367,15 @@ export function PortalPreferences() {
             </SelectInput>
           </div>
         </Card>
-        <Card title={t('portal.categories')}>
-          <ul className="space-y-2">
+        <Card title={t('portal.categories')} description={t('portal.categoriesHint')}>
+          <ul className="divide-y divide-slate-100">
             {g.categories.map((c) => (
-              <li key={c.category} className="flex items-center justify-between gap-2">
-                <span>{t(`messageTypes.${c.category}` as 'messageTypes.logistics')}</span>
-                <Button size="sm" variant={c.opted_out ? 'primary' : 'secondary'} onClick={() => opt.mutate({ category: c.category, opted_out: !c.opted_out })}>
+              <li key={c.category} className="flex items-center justify-between gap-2 py-2">
+                <span>
+                  {t(`messageTypes.${c.category}` as 'messageTypes.logistics')}
+                  {c.opted_out && <span className="ms-2 text-sm text-slate-500">({t('portal.stopped')})</span>}
+                </span>
+                <Button size="sm" variant="secondary" onClick={() => opt.mutate({ category: c.category, opted_out: !c.opted_out })}>
                   {c.opted_out ? t('portal.receive') : t('portal.stop')}
                 </Button>
               </li>
@@ -354,7 +414,7 @@ export function StudentHome() {
   return (
     <>
       {toast}
-      <PageHeader title={t('student.title')} subtitle={d.student.name} />
+      <PageHeader icon={Sparkles} title={t('student.title')} subtitle={t('student.intro', { name: d.student.name.split(' ')[0] })} />
       <div className="grid gap-4 lg:grid-cols-2">
         <SkillsByDomain skills={d.skills} name={d.student.name.split(' ')[0]} />
         <div className="space-y-4">

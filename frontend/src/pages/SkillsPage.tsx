@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
+import { BookOpen } from 'lucide-react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -46,7 +47,7 @@ export default function SkillsPage() {
   )
   return (
     <>
-      <PageHeader title={t('skills.title')} subtitle={`${skills.data?.length ?? 0}`} />
+      <PageHeader icon={BookOpen} title={t('skills.title')} subtitle={t('skills.intro', { n: skills.data?.length ?? 0 })} />
       {coverage.data && (
         <div className="mb-4 grid gap-4 lg:grid-cols-3">
           <FigureTile title={t('skills.coverage')} figure={coverage.data.taxonomy_coverage} />
@@ -54,7 +55,7 @@ export default function SkillsPage() {
             <ul className="space-y-2">
               {coverage.data.domains.map((d) => (
                 <li key={d.domain} className="grid grid-cols-[120px_1fr] items-center gap-2 text-sm">
-                  <span>{d.domain}</span>
+                  <span>{t(`domains.${d.domain}` as 'domains.Coding', { defaultValue: d.domain })}</span>
                   <Meter value={d.skills_evidenced} max={d.skills_total} label={d.domain} valueText={`${d.skills_evidenced}/${d.skills_total}`} />
                 </li>
               ))}
@@ -112,11 +113,13 @@ export default function SkillsPage() {
       )}
       <Card>
         <div className="mb-4 grid gap-3 sm:grid-cols-2">
-          <TextInput label={t('common.search')} value={q} onChange={(e) => setQ(e.target.value)} />
+          <TextInput label={t('common.search')} placeholder={t('capture.skillSearch')} value={q} onChange={(e) => setQ(e.target.value)} />
           <SelectInput label={t('skills.domain')} value={domain} onChange={(e) => setDomain(e.target.value)}>
             <option value="">{t('common.all')}</option>
             {domains.map((d) => (
-              <option key={d}>{d}</option>
+              <option key={d} value={d}>
+                {t(`domains.${d}` as 'domains.Coding', { defaultValue: d })}
+              </option>
             ))}
           </SelectInput>
         </div>
@@ -124,7 +127,6 @@ export default function SkillsPage() {
           <table>
             <thead>
               <tr>
-                <th>{t('skills.code')}</th>
                 <th>{t('capture.skill')}</th>
                 <th>{t('skills.parentLabel')}</th>
                 <th>{t('skills.typicalYear')}</th>
@@ -137,11 +139,10 @@ export default function SkillsPage() {
                 const h = holders.get(s.code)
                 return (
                   <tr key={s.id}>
-                    <td className="whitespace-nowrap font-mono text-xs">{s.code}</td>
                     <td>
                       {s.name}
                       <div className="text-xs text-slate-500">
-                        {s.domain} · {s.strand}
+                        {t(`domains.${s.domain}` as 'domains.Coding', { defaultValue: s.domain })} · {s.strand} · <span className="font-mono">{s.code}</span>
                       </div>
                     </td>
                     <td className="text-sm">

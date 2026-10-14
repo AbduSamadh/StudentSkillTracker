@@ -3,8 +3,10 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useParams } from 'react-router-dom'
 
+import { Download, FileText, Flag } from 'lucide-react'
+
 import { ReadinessTrace, RecommendationList } from '@/components/Readiness'
-import { Alert, Badge, Button, Card, ClaimBadge, Empty, LevelPill, Loading, PageHeader, SelectInput, TableWrap, Tabs, useToast } from '@/components/ui'
+import { Alert, Badge, Button, Card, ClaimBadge, Empty, EmptyState, LevelPill, Loading, PageHeader, SelectInput, TableWrap, Tabs, useToast } from '@/components/ui'
 import { api, downloadBlob, errorMessage } from '@/lib/api'
 import { useAuth } from '@/lib/auth'
 import { fmtDate } from '@/lib/format'
@@ -62,12 +64,12 @@ export default function StudentProfilePage() {
     <>
       {toast}
       <PageHeader
+        back={{ to: '/students', label: t('students.title') }}
         title={s.display_name}
         subtitle={
-          <span className="flex flex-wrap gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <span>{t('common.year', { n: s.year_group })}</span>
             {s.house && <span>· {s.house}</span>}
-            <span>· {s.external_mis_id}</span>
             {s.squads.filter((q) => q.status === 'active').map((q) => (
               <Badge key={q.squad_id} tone="brand">
                 {q.squad_name}
@@ -79,12 +81,12 @@ export default function StudentProfilePage() {
         actions={
           <>
             {can('generate_reports') && (
-              <Button variant="secondary" onClick={() => void profileReport()}>
+              <Button variant="secondary" icon={FileText} onClick={() => void profileReport()}>
                 {t('profile.profileReport')}
               </Button>
             )}
             {can('subject_access_export') && (
-              <Button variant="secondary" onClick={() => void sar()}>
+              <Button variant="ghost" icon={Download} onClick={() => void sar()}>
                 {t('profile.exportSar')}
               </Button>
             )}
@@ -94,11 +96,12 @@ export default function StudentProfilePage() {
       {s.open_flags.length > 0 && (
         <div className="mb-4 space-y-2">
           {s.open_flags.map((f) => (
-            <div key={f.id} className="card claim-inferred flex flex-wrap items-start gap-3 border-violet-300">
-              <Badge tone="amber">{t(`flagKinds.${f.kind}` as 'flagKinds.plateau')}</Badge>
-              <div className="flex-1 text-sm">
-                <p>{f.explanation}</p>
-                <p className="text-xs text-slate-500">
+            <div key={f.id} className="card claim-inferred flex flex-wrap items-start gap-3">
+              <Flag aria-hidden className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+              <div className="min-w-0 flex-1 text-sm">
+                <p className="font-medium text-slate-900">{t(`flagKinds.${f.kind}` as 'flagKinds.plateau')}</p>
+                <p className="text-slate-700">{f.explanation}</p>
+                <p className="mt-1 text-xs text-slate-500">
                   {t('students.rule')}: {f.rule}
                 </p>
               </div>
@@ -126,7 +129,12 @@ function SkillsTab({ profile, loading }: { profile?: Profile; loading: boolean }
   const { t } = useTranslation()
   const name = useStaffDirectory()
   if (loading || !profile) return <Loading />
-  if (profile.skills.length === 0) return <Empty>{t('profile.noSkills')}</Empty>
+  if (profile.skills.length === 0)
+    return (
+      <EmptyState title={t('profile.noSkills')}>
+        {t('profile.noSkillsHint')}
+      </EmptyState>
+    )
   const domains = [...new Set(profile.skills.map((s) => s.domain))]
   return (
     <div className="space-y-4">
@@ -136,7 +144,6 @@ function SkillsTab({ profile, loading }: { profile?: Profile; loading: boolean }
             <table>
               <thead>
                 <tr>
-                  <th>{t('skills.code')}</th>
                   <th>{t('capture.skill')}</th>
                   <th>{t('capture.level')}</th>
                   <th>{t('profile.evidence')}</th>
@@ -148,13 +155,18 @@ function SkillsTab({ profile, loading }: { profile?: Profile; loading: boolean }
                   .filter((s) => s.domain === d)
                   .map((s) => (
                     <tr key={s.skill_id}>
-                      <td className="font-mono text-xs">{s.code}</td>
-                      <td>{s.name}</td>
+                      <td>
+                        {s.name}
+                        <div className="font-mono text-[11px] text-slate-400">{s.code}</div>
+                      </td>
                       <td>
                         <LevelPill level={s.level} />
                       </td>
                       <td className="text-xs">
-                        <div>{t(`profile.sources.${s.latest_award.source}` as 'profile.sources.teacher')} · {s.latest_award.confidence}</div>
+                        <div>
+                          {t(`profile.sources.${s.latest_award.source}` as 'profile.sources.teacher')}
+                          {s.latest_award.confidence && ` · ${t(`confidence.${s.latest_award.confidence}` as 'confidence.high', { defaultValue: s.latest_award.confidence })}`}
+                        </div>
                         <div className="text-slate-600">{s.latest_award.evidence_note}</div>
                       </td>
                       <td className="text-xs">
@@ -201,11 +213,12 @@ function ReadinessTab({ studentId }: { studentId: string }) {
 }
 
 function RecommendationsTab({ studentId }: { studentId: string }) {
+  const { t } = useTranslation()
   const r = useQuery({ queryKey: ['recs', studentId], queryFn: () => api<Recommendations>(`/students/${studentId}/recommendations`) })
   if (r.isLoading) return <Loading />
   if (r.error) return <Alert tone="error">{errorMessage(r.error)}</Alert>
   const d = r.data!
-  if (!d.recommended.length && !d.almost_ready.length && !d.not_recommended.length) return <Empty />
+  if (!d.recommended.length && !d.almost_ready.length && !d.not_recommended.length) return <EmptyState title={t('profile.noRecommendations')}>{t('profile.noRecommendationsHint')}</EmptyState>
   return (
     <div className="space-y-4">
       <RecommendationList items={d.recommended} kind="recommended" />
@@ -226,7 +239,7 @@ function HistoryTab({ profile }: { profile?: Profile }) {
       </Card>
       <Card title={t('profile.results')} actions={<ClaimBadge type="measured" />}>
         {profile.results.length === 0 ? (
-          <Empty />
+          <Empty>{t('profile.noResults')}</Empty>
         ) : (
           <TableWrap>
             <table>
@@ -271,9 +284,9 @@ function HistoryTab({ profile }: { profile?: Profile }) {
             .map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-2">
                 <span className="w-24 text-slate-500">{fmtDate(a.awarded_on)}</span>
-                <span className="font-mono text-xs">{a.skill_code}</span>
+                <span>{a.skill_name ?? a.skill_code}</span>
                 <LevelPill level={a.level} />
-                <Badge tone={a.status === 'verified' ? 'green' : a.status === 'proposed' ? 'amber' : 'slate'}>{a.status}</Badge>
+                <Badge tone={a.status === 'verified' ? 'green' : a.status === 'proposed' ? 'amber' : 'slate'}>{t(`awardStatus.${a.status}`)}</Badge>
                 <ClaimBadge type={a.claim_type} />
               </li>
             ))}
@@ -301,16 +314,15 @@ function GoalsTab({ studentId, profile }: { studentId: string; profile?: Profile
         <ul className="mb-4 space-y-2 text-sm">
           {profile.goals.map((g) => (
             <li key={g.id} className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-xs">{g.skill_code}</span>
               <span>{g.skill_name}</span>
               <LevelPill level={g.target_level} />
               {g.target_date && <span className="text-slate-500">{fmtDate(g.target_date)}</span>}
-              <Badge>{g.status}</Badge>
+              <Badge>{t(`goalStatus.${g.status}` as 'goalStatus.open', { defaultValue: g.status })}</Badge>
             </li>
           ))}
         </ul>
       ) : (
-        <Empty />
+        <Empty>{t('profile.noGoals')}</Empty>
       )}
       {can('verify_skills') && (
         <form
@@ -321,10 +333,10 @@ function GoalsTab({ studentId, profile }: { studentId: string; profile?: Profile
           }}
         >
           <SelectInput label={t('capture.skill')} value={skill} onChange={(e) => setSkill(e.target.value)} required>
-            <option value="" />
+            <option value="">{t('capture.chooseSkill')}</option>
             {(skills.data ?? []).map((s) => (
               <option key={s.id} value={s.id}>
-                {s.code} — {s.name}
+                {s.name}
               </option>
             ))}
           </SelectInput>
@@ -389,7 +401,7 @@ function ConsentsTab({ studentId, guardians }: { studentId: string; guardians: D
         <ul className="space-y-1 text-sm">
           {q.data!.history.map((c) => (
             <li key={c.id}>
-              {fmtDate(c.decided_at)} · {t(`portal.purposes.${c.purpose}` as 'portal.purposes.media')} · {c.decision} (v{c.version}, {c.method})
+              {fmtDate(c.decided_at)} · {t(`portal.purposes.${c.purpose}` as 'portal.purposes.media')} · {t(`consentDecision.${c.decision}` as 'consentDecision.granted', { defaultValue: c.decision })} (v{c.version}, {c.method})
               {c.withdrawn_at && <span className="text-red-700"> · {t('portal.withdraw')} {fmtDate(c.withdrawn_at)}</span>}
             </li>
           ))}

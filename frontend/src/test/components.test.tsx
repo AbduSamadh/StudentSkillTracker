@@ -40,8 +40,9 @@ describe('reporting components', () => {
       </>,
     )
     const [m, i] = container.querySelectorAll('span[title]')
-    expect(m.textContent).toContain('Measured')
-    expect(i.textContent).toContain('Inferred')
+    expect(m.textContent).toContain('Recorded')
+    expect(i.textContent).toContain('Worked out')
+    expect(m.getAttribute('title')).not.toBe(i.getAttribute('title'))
     expect(i.className).toContain('border-dashed')
     expect(m.className).not.toContain('border-dashed')
   })

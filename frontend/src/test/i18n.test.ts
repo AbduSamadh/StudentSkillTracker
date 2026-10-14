@@ -45,3 +45,23 @@ describe('direction', () => {
     expect(document.documentElement.dir).toBe('ltr')
   })
 })
+
+describe('wording used by the screens', () => {
+  it('exists in the dictionary for every literal key', async () => {
+    const { readFileSync, readdirSync, statSync } = await import('node:fs')
+    const { join } = await import('node:path')
+    const files = (dir: string): string[] =>
+      readdirSync(dir).flatMap((f) => {
+        const p = join(dir, f)
+        return statSync(p).isDirectory() ? files(p) : /\.tsx?$/.test(f) && !p.includes('/test/') ? [p] : []
+      })
+    const E = flatten(en as unknown as Tree)
+    const missing: string[] = []
+    for (const file of files(join(__dirname, '..'))) {
+      for (const m of readFileSync(file, 'utf8').matchAll(/\bt\(\s*'([a-zA-Z][\w.]*\w)'/g)) {
+        if (!(m[1] in E)) missing.push(`${file.split('/src/')[1]}: ${m[1]}`)
+      }
+    }
+    expect(missing).toEqual([])
+  })
+})
